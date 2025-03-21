@@ -6,10 +6,11 @@ import { io, type Socket } from "socket.io-client"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
-import { ArrowLeft, Copy, Users, Timer } from "lucide-react"
+import { ArrowLeft, Copy, Users, Timer, AlertCircle } from "lucide-react"
 import { BingoCard } from "@/components/bingo-card"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
+import { ErrorBoundary } from "@/components/error-boundary"
 
 interface Player {
   id: string
@@ -31,7 +32,7 @@ interface GameState {
   winner: string | null
 }
 
-export default function RoomPage() {
+function RoomContent() {
   const params = useParams()
   const searchParams = useSearchParams()
   const roomId = params.roomId as string
@@ -313,6 +314,14 @@ export default function RoomPage() {
         </div>
       </main>
     </div>
+  )
+}
+
+export default function RoomPage() {
+  return (
+    <ErrorBoundary>
+      <RoomContent />
+    </ErrorBoundary>
   )
 }
 
