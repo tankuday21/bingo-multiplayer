@@ -67,6 +67,22 @@ function RoomContent() {
       timeout: 10000,
       transports: ["websocket", "polling"],
       forceNew: true,
+      autoConnect: true,
+      path: '/socket.io/',
+      withCredentials: true,
+      extraHeaders: {
+        "Access-Control-Allow-Origin": "*"
+      }
+    })
+
+    // Add error handling
+    newSocket.on("connect_error", (error) => {
+      console.error("Connection error:", error)
+      toast({
+        title: "Connection Error",
+        description: "Failed to connect to the server. Please try again.",
+        variant: "destructive",
+      })
     })
 
     setSocket(newSocket)
@@ -76,6 +92,10 @@ function RoomContent() {
       setIsConnected(true)
       setIsReconnecting(false)
       console.log("Connected to server")
+      toast({
+        title: "Connected",
+        description: "Successfully connected to the server.",
+      })
     })
 
     newSocket.on("disconnect", () => {

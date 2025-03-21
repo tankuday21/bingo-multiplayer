@@ -66,6 +66,7 @@ const io = new Server(server, {
       if (CORS_ORIGINS.indexOf(origin) !== -1) {
         callback(null, true)
       } else {
+        console.log('CORS blocked for origin:', origin)
         callback(new Error('Not allowed by CORS'))
       }
     },
@@ -77,7 +78,14 @@ const io = new Server(server, {
   pingInterval: 25000,
   transports: ["websocket", "polling"],
   allowEIO3: true,
-  allowUpgrades: true
+  allowUpgrades: true,
+  connectTimeout: 45000,
+  maxHttpBufferSize: 1e8
+})
+
+// Add connection error handling
+io.engine.on("connection_error", (err) => {
+  console.log('Connection error:', err)
 })
 
 // MongoDB connection with retry logic
