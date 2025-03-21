@@ -43,7 +43,16 @@ export default function RoomPage() {
 
   useEffect(() => {
     // Initialize socket connection
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3000"
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL
+    if (!socketUrl) {
+      toast({
+        title: "Connection Error",
+        description: "Server URL is not configured. Please try again later.",
+        variant: "destructive",
+      })
+      return
+    }
+
     const newSocket = io(socketUrl, {
       query: {
         roomId,
@@ -51,6 +60,9 @@ export default function RoomPage() {
       },
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
+      timeout: 10000,
+      transports: ["websocket", "polling"],
+      forceNew: true,
     })
 
     setSocket(newSocket)
