@@ -61,9 +61,11 @@ const server = http.createServer(app)
 const io = new Server(server, {
   cors: {
     origin: function(origin, callback) {
+      console.log('Incoming connection from origin:', origin)
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true)
       if (CORS_ORIGINS.indexOf(origin) !== -1) {
+        console.log('Origin allowed:', origin)
         callback(null, true)
       } else {
         console.log('CORS blocked for origin:', origin)
@@ -74,9 +76,10 @@ const io = new Server(server, {
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"]
   },
+  path: '/socket.io',
   pingTimeout: 60000,
   pingInterval: 25000,
-  transports: ["websocket", "polling"],
+  transports: ["polling", "websocket"],
   allowEIO3: true,
   allowUpgrades: true,
   connectTimeout: 45000,
@@ -85,7 +88,7 @@ const io = new Server(server, {
 
 // Add connection error handling
 io.engine.on("connection_error", (err) => {
-  console.log('Connection error:', err)
+  console.log('Connection error:', err.code, err.message, err.context)
 })
 
 // MongoDB connection with retry logic
@@ -242,6 +245,15 @@ function getRandomNumber(min, max) {
 // Socket.io connection handler
 io.on("connection", (socket) => {
   console.log("New client connected:", socket.id)
+  console.log('Client handshake:', socket.handshake)
+
+  socket.on('disconnect', (reason) => {
+    console.log('Client disconnected:', socket.id, 'Reason:', reason)
+  })
+
+  socket.on('error', (error) => {
+    console.log('Socket error:', socket.id, error)
+  })
 
   const { roomId, username } = socket.handshake.query
   const gridSize = Number.parseInt(socket.handshake.query.gridSize) || 5

@@ -57,6 +57,8 @@ function RoomContent() {
       return
     }
 
+    console.log("Attempting to connect to:", socketUrl)
+
     const newSocket = io(socketUrl, {
       query: {
         roomId,
@@ -64,23 +66,36 @@ function RoomContent() {
       },
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      timeout: 10000,
-      transports: ["websocket", "polling"],
+      timeout: 20000,
+      transports: ["polling", "websocket"],
       forceNew: true,
       autoConnect: true,
-      path: '/socket.io/',
+      path: '/socket.io',
       withCredentials: true,
-      extraHeaders: {
-        "Access-Control-Allow-Origin": "*"
-      }
+      rejectUnauthorized: false,
+      secure: true
     })
 
     // Add error handling
     newSocket.on("connect_error", (error) => {
-      console.error("Connection error:", error)
+      console.error("Connection error details:", {
+        message: error.message,
+        description: error.description,
+        type: error.type,
+        context: error.context
+      })
       toast({
         title: "Connection Error",
-        description: "Failed to connect to the server. Please try again.",
+        description: `Failed to connect: ${error.message}`,
+        variant: "destructive",
+      })
+    })
+
+    newSocket.on("error", (error) => {
+      console.error("Socket error:", error)
+      toast({
+        title: "Socket Error",
+        description: "An error occurred with the connection.",
         variant: "destructive",
       })
     })
@@ -91,21 +106,30 @@ function RoomContent() {
     newSocket.on("connect", () => {
       setIsConnected(true)
       setIsReconnecting(false)
-      console.log("Connected to server")
+      console.log("Connected successfully to server:", socketUrl)
       toast({
         title: "Connected",
-        description: "Successfully connected to the server.",
+        description: "Successfully connected to the game server.",
       })
     })
 
-    newSocket.on("disconnect", () => {
+    newSocket.on("disconnect", (reason) => {
       setIsConnected(false)
-      console.log("Disconnected from server")
+      console.log("Disconnected from server. Reason:", reason)
+      toast({
+        title: "Disconnected",
+        description: `Lost connection to server: ${reason}`,
+        variant: "destructive",
+      })
     })
 
-    newSocket.on("reconnecting", () => {
+    newSocket.on("reconnecting", (attemptNumber) => {
       setIsReconnecting(true)
-      console.log("Reconnecting to server...")
+      console.log(`Reconnecting to server... Attempt ${attemptNumber}`)
+      toast({
+        title: "Reconnecting",
+        description: `Attempting to reconnect (${attemptNumber}/5)...`,
+      })
     })
 
     newSocket.on("gameState", (state: GameState) => {
@@ -116,14 +140,6 @@ function RoomContent() {
       if (currentPlayer) {
         setPlayer(currentPlayer)
       }
-    })
-
-    newSocket.on("error", (error: string) => {
-      toast({
-        title: "Error",
-        description: error,
-        variant: "destructive",
-      })
     })
 
     newSocket.on("roomFull", () => {
