@@ -11,11 +11,11 @@ const compression = require("compression")
 // Environment variables
 const {
   MONGODB_URI,
-  MONGODB_DB = 'bingo-multiplayer',
-  NODE_ENV = 'development',
-  PORT = 3000,
-  CORS_ORIGINS = 'https://bingo-multiplayer-hazel.vercel.app',
-  JWT_SECRET,
+  MONGODB_DB = 'bingo-game',
+  NODE_ENV = 'production',
+  PORT = 3001,
+  CORS_ORIGINS = 'https://bingo-multiplayer-hazel.vercel.app,http://localhost:3000',
+  JWT_SECRET = 'bingo-game-secret-key-2024',
   SOCKET_PATH = '/socket.io/'
 } = process.env;
 
@@ -146,8 +146,8 @@ const connectWithRetry = async (retries = 5) => {
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
     })
-    db = client.db(process.env.MONGODB_DB || "bingo")
-    console.log("MongoDB connected successfully")
+    db = client.db(MONGODB_DB)
+    console.log("MongoDB connected successfully to database:", MONGODB_DB)
   } catch (err) {
     console.error("MongoDB connection error:", err)
     if (retries > 0) {
