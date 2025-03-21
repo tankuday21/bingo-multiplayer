@@ -13,6 +13,12 @@ const MONGODB_URI = process.env.MONGODB_URI
 const CORS_ORIGINS = (process.env.CORS_ORIGINS || "http://localhost:3000").split(",")
 const NODE_ENV = process.env.NODE_ENV || "development"
 
+// Validate required environment variables
+if (!MONGODB_URI) {
+  console.error("MONGODB_URI environment variable is required")
+  process.exit(1)
+}
+
 // Initialize Express app
 const app = express()
 
@@ -83,7 +89,7 @@ const connectWithRetry = async (retries = 5) => {
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
     })
-    db = client.db(process.env.MONGODB_DB)
+    db = client.db(process.env.MONGODB_DB || "bingo")
     console.log("MongoDB connected successfully")
   } catch (err) {
     console.error("MongoDB connection error:", err)
