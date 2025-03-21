@@ -75,28 +75,45 @@ function RoomContent() {
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
       timeout: 20000,
-      transports: ['polling', 'websocket'],
+      transports: ['websocket', 'polling'],
       forceNew: true,
       autoConnect: true,
       path: '/socket.io/',
       withCredentials: true,
-      closeOnBeforeunload: false
+      closeOnBeforeunload: false,
+      rejectUnauthorized: false,
+      extraHeaders: {
+        'Access-Control-Allow-Credentials': 'true'
+      }
     })
 
-    // Add connection error handling
+    // Add connection error handling with retries
+    let retryCount = 0;
+    const maxRetries = 5;
+
     newSocket.on("connect_error", (error: SocketError) => {
       console.error("Connection error details:", {
         message: error.message,
         description: error.description,
         type: error.type,
         context: error.context,
-        data: error.data
-      })
-      toast({
-        title: "Connection Error",
-        description: `Failed to connect: ${error.message}. Retrying...`,
-        variant: "destructive",
-      })
+        data: error.data,
+        retryCount
+      });
+
+      if (retryCount < maxRetries) {
+        retryCount++;
+        console.log(`Retrying connection (${retryCount}/${maxRetries})...`);
+        setTimeout(() => {
+          newSocket.connect();
+        }, 1000 * retryCount);
+      } else {
+        toast({
+          title: "Connection Error",
+          description: `Failed to connect after ${maxRetries} attempts. Please refresh the page.`,
+          variant: "destructive",
+        });
+      }
     })
 
     newSocket.on("error", (error) => {

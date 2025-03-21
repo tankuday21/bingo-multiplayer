@@ -67,7 +67,14 @@ const io = new Server(server, {
         console.log('Allowing connection with no origin');
         return callback(null, true);
       }
-      if (CORS_ORIGINS.indexOf(origin) !== -1 || origin.includes('localhost')) {
+      // Allow all origins in development
+      if (NODE_ENV === 'development') {
+        return callback(null, true);
+      }
+      // In production, check against CORS_ORIGINS or allow vercel.app domains
+      if (CORS_ORIGINS.indexOf(origin) !== -1 || 
+          origin.includes('vercel.app') || 
+          origin.includes('localhost')) {
         console.log('Origin allowed:', origin);
         callback(null, true);
       } else {
@@ -85,14 +92,20 @@ const io = new Server(server, {
   pingInterval: 25000,
   connectTimeout: 45000,
   maxHttpBufferSize: 1e8,
-  transports: ['polling', 'websocket'],
+  transports: ['websocket', 'polling'],
   allowUpgrades: true,
   perMessageDeflate: {
     threshold: 32768
+  },
+  cookie: {
+    name: 'io',
+    path: '/',
+    httpOnly: true,
+    sameSite: 'lax'
   }
 });
 
-// Add connection error handling
+// Add connection error handling with more detailed logging
 io.engine.on("connection_error", (err) => {
   console.log('Connection error:', {
     code: err.code,
@@ -102,8 +115,14 @@ io.engine.on("connection_error", (err) => {
       url: err.req?.url,
       headers: err.req?.headers,
       query: err.req?.query
-    }
+    },
+    context: err.context
   });
+});
+
+// Add general error handling for the io instance
+io.on("error", (error) => {
+  console.error("Socket.IO error:", error);
 });
 
 // MongoDB connection with retry logic
