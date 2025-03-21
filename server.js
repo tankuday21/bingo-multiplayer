@@ -9,16 +9,29 @@ const rateLimit = require("express-rate-limit")
 const compression = require("compression")
 
 // Environment variables
-const PORT = process.env.PORT || 3000
-const MONGODB_URI = process.env.MONGODB_URI
-const CORS_ORIGINS = (process.env.CORS_ORIGINS || "http://localhost:3000").split(",")
-const NODE_ENV = process.env.NODE_ENV || "development"
+const {
+  MONGODB_URI,
+  MONGODB_DB = 'bingo-multiplayer',
+  NODE_ENV = 'development',
+  PORT = 3000,
+  CORS_ORIGINS = 'https://bingo-multiplayer-hazel.vercel.app',
+  JWT_SECRET,
+  SOCKET_PATH = '/socket.io/'
+} = process.env;
 
 // Validate required environment variables
 if (!MONGODB_URI) {
-  console.error("MONGODB_URI environment variable is required")
-  process.exit(1)
+  console.error('MONGODB_URI is required but not set');
+  process.exit(1);
 }
+
+if (!JWT_SECRET) {
+  console.error('JWT_SECRET is required but not set');
+  process.exit(1);
+}
+
+// Parse CORS origins
+const corsOrigins = CORS_ORIGINS.split(',').map(origin => origin.trim());
 
 // Initialize Express app
 const app = express()
@@ -71,10 +84,8 @@ const io = new Server(server, {
       if (NODE_ENV === 'development') {
         return callback(null, true);
       }
-      // In production, check against CORS_ORIGINS or allow vercel.app domains
-      if (CORS_ORIGINS.indexOf(origin) !== -1 || 
-          origin.includes('vercel.app') || 
-          origin.includes('localhost')) {
+      // In production, check against corsOrigins
+      if (corsOrigins.some(allowedOrigin => origin.includes(allowedOrigin))) {
         console.log('Origin allowed:', origin);
         callback(null, true);
       } else {
@@ -86,7 +97,7 @@ const io = new Server(server, {
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"]
   },
-  path: '/socket.io/',
+  path: SOCKET_PATH,
   serveClient: false,
   pingTimeout: 60000,
   pingInterval: 25000,
