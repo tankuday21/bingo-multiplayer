@@ -16,7 +16,6 @@
   "dependencies": {
     "@radix-ui/react-slot": "^1.1.2",
     "@radix-ui/react-toast": "^1.2.6",
-    "@tailwindcss/postcss": "^4.0.15",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "compression": "^1.8.0",
@@ -44,7 +43,7 @@
     "autoprefixer": "^10.4.21",
     "eslint": "^8",
     "eslint-config-next": "14.0.4",
-    "postcss": "^8.5.3",
+    "postcss": "^8.4.35",
     "tailwindcss": "^3.4.17",
     "typescript": "^5"
   },
