@@ -10,14 +10,17 @@ const compression = require("compression")
 // Environment variables
 const PORT = process.env.PORT || 3000
 const MONGODB_URI = process.env.MONGODB_URI
-const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000"
+const CORS_ORIGINS = (process.env.CORS_ORIGINS || "http://localhost:3000").split(",")
 const NODE_ENV = process.env.NODE_ENV || "development"
 
 // Initialize Express app
 const app = express()
 
 // Security middleware
-app.use(helmet())
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginEmbedderPolicy: false
+}))
 app.use(compression())
 app.use(express.json({ limit: "10kb" }))
 
@@ -30,9 +33,18 @@ app.use(limiter)
 
 // CORS configuration
 app.use(cors({
-  origin: CORS_ORIGIN,
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true)
+    if (CORS_ORIGINS.indexOf(origin) !== -1) {
+      callback(null, true)
+    } else {
+      callback(new Error('Not allowed by CORS'))
+    }
+  },
   methods: ["GET", "POST"],
-  credentials: true
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization"]
 }))
 
 // Create HTTP server
@@ -41,13 +53,24 @@ const server = http.createServer(app)
 // Initialize Socket.io with production settings
 const io = new Server(server, {
   cors: {
-    origin: CORS_ORIGIN,
+    origin: function(origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true)
+      if (CORS_ORIGINS.indexOf(origin) !== -1) {
+        callback(null, true)
+      } else {
+        callback(new Error('Not allowed by CORS'))
+      }
+    },
     methods: ["GET", "POST"],
-    credentials: true
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"]
   },
   pingTimeout: 60000,
   pingInterval: 25000,
-  transports: ["websocket", "polling"]
+  transports: ["websocket", "polling"],
+  allowEIO3: true,
+  allowUpgrades: true
 })
 
 // MongoDB connection with retry logic

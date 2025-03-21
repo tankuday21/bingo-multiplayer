@@ -6,7 +6,10 @@ import { io, type Socket } from "socket.io-client"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
-import { ArrowLeft, Copy, Users } from "lucide-react"
+import { ArrowLeft, Copy, Users, Timer } from "lucide-react"
+import { BingoCard } from "@/components/bingo-card"
+import { motion, AnimatePresence } from "framer-motion"
+import { cn } from "@/lib/utils"
 
 interface Player {
   id: string
@@ -153,29 +156,41 @@ export default function RoomPage() {
 
   if (!isConnected) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">{isReconnecting ? "Reconnecting..." : "Connecting to server..."}</h1>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center space-y-4"
+        >
+          <h1 className="text-2xl font-bold">{isReconnecting ? "Reconnecting..." : "Connecting to server..."}</h1>
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary mx-auto"></div>
-        </div>
+        </motion.div>
       </div>
     )
   }
 
   if (!gameState) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Loading game...</h1>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center space-y-4"
+        >
+          <h1 className="text-2xl font-bold">Loading game...</h1>
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary mx-auto"></div>
-        </div>
+        </motion.div>
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="border-b">
+    <div className="flex min-h-screen flex-col bg-background">
+      <motion.header
+        initial={{ y: -100 }}
+        animate={{ y: 0 }}
+        className="border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60"
+      >
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/">
@@ -197,120 +212,104 @@ export default function RoomPage() {
             </div>
           </div>
         </div>
-      </header>
+      </motion.header>
 
       <main className="flex-1 container py-6">
-        <div className="grid md:grid-cols-[1fr_300px] gap-6">
-          <div className="space-y-6">
+        <div className="grid lg:grid-cols-[1fr_300px] gap-6">
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="space-y-6"
+          >
             {!gameState.gameStarted && gameState.players.length >= 2 && (
-              <div className="text-center">
-                <Button onClick={handleStartGame} size="lg">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-center"
+              >
+                <Button onClick={handleStartGame} size="lg" className="animate-pulse">
                   Start Game
                 </Button>
-              </div>
+              </motion.div>
             )}
 
             {!gameState.gameStarted && gameState.players.length < 2 && (
-              <div className="text-center p-4 border rounded-lg">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-center p-6 border rounded-lg bg-card"
+              >
                 <h2 className="text-xl font-semibold mb-2">Waiting for players...</h2>
                 <p className="text-muted-foreground">Share the room code with your friends to start playing.</p>
-              </div>
+              </motion.div>
             )}
 
             {gameState.gameStarted && player && (
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <h2 className="text-xl font-semibold">Your Bingo Card</h2>
-                  <div className="text-sm font-medium">
-                    Turn: {gameState.currentTurn === socket?.id ? "Your turn" : "Opponent's turn"}
-                    {gameState.turnTimeLeft > 0 && <span className="ml-2">({gameState.turnTimeLeft}s)</span>}
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Timer className="h-4 w-4" />
+                    <span>
+                      Turn: {gameState.currentTurn === socket?.id ? "Your turn" : "Opponent's turn"}
+                      {gameState.turnTimeLeft > 0 && <span className="ml-2">({gameState.turnTimeLeft}s)</span>}
+                    </span>
                   </div>
                 </div>
 
-                <div
-                  className="grid gap-2"
-                  style={{
-                    gridTemplateColumns: `repeat(${gameState.gridSize}, minmax(0, 1fr))`,
-                  }}
-                >
-                  {player.grid.map((row, rowIndex) =>
-                    row.map((cell, colIndex) => {
-                      const isMarked = player.markedCells[rowIndex][colIndex]
-                      const isCalled = gameState.calledNumbers.includes(cell)
-
-                      return (
-                        <button
-                          key={`${rowIndex}-${colIndex}`}
-                          className={`aspect-square flex items-center justify-center text-lg font-medium rounded-md transition-colors ${
-                            isMarked
-                              ? "bg-primary text-primary-foreground"
-                              : isCalled
-                                ? "bg-accent text-accent-foreground cursor-pointer"
-                                : "bg-muted"
-                          }`}
-                          onClick={() => handleCellClick(rowIndex, colIndex)}
-                          disabled={!isCalled || isMarked}
-                        >
-                          {cell}
-                        </button>
-                      )
-                    }),
-                  )}
-                </div>
+                <BingoCard
+                  grid={player.grid}
+                  markedCells={player.markedCells}
+                  calledNumbers={gameState.calledNumbers}
+                  onCellClick={handleCellClick}
+                  isCurrentTurn={gameState.currentTurn === socket?.id}
+                  disabled={!gameState.gameStarted || gameState.gameEnded}
+                />
               </div>
             )}
+          </motion.div>
 
-            {gameState.gameEnded && (
-              <div className="text-center p-6 border rounded-lg bg-muted">
-                <h2 className="text-2xl font-bold mb-2">Game Over!</h2>
-                <p className="text-xl">
-                  {gameState.winner === socket?.id
-                    ? "You won! 🎉"
-                    : `${gameState.players.find((p) => p.id === gameState.winner)?.username || "Someone"} won!`}
-                </p>
-                <Button className="mt-4" onClick={() => (window.location.href = "/")}>
-                  Back to Home
-                </Button>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-6">
-            <div className="border rounded-lg p-4">
-              <h3 className="font-semibold mb-3">Players</h3>
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="space-y-6"
+          >
+            <div className="bg-card rounded-lg p-4 shadow-lg">
+              <h3 className="font-semibold mb-4">Players</h3>
               <div className="space-y-2">
                 {gameState.players.map((p) => (
                   <div
                     key={p.id}
-                    className={`flex justify-between items-center p-2 rounded ${
-                      p.id === socket?.id ? "bg-accent" : ""
-                    }`}
+                    className={cn(
+                      "flex items-center justify-between p-2 rounded-md",
+                      p.id === socket?.id ? "bg-primary/10" : "bg-muted"
+                    )}
                   >
-                    <span>
-                      {p.username} {p.id === socket?.id && "(You)"}
-                    </span>
-                    <span>Score: {p.score}</span>
+                    <span>{p.username}</span>
+                    <span className="text-sm text-muted-foreground">{p.score} points</span>
                   </div>
                 ))}
               </div>
             </div>
 
             {gameState.gameStarted && (
-              <div className="border rounded-lg p-4">
-                <h3 className="font-semibold mb-3">Called Numbers</h3>
+              <div className="bg-card rounded-lg p-4 shadow-lg">
+                <h3 className="font-semibold mb-4">Called Numbers</h3>
                 <div className="flex flex-wrap gap-2">
                   {gameState.calledNumbers.map((num) => (
-                    <div
+                    <motion.div
                       key={num}
-                      className="w-8 h-8 flex items-center justify-center bg-primary text-primary-foreground rounded-full text-sm font-medium"
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="w-8 h-8 flex items-center justify-center rounded-full bg-primary text-primary-foreground"
                     >
                       {num}
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
               </div>
             )}
-          </div>
+          </motion.div>
         </div>
       </main>
     </div>
