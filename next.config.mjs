@@ -1,11 +1,21 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     reactStrictMode: true,
-    poweredByHeader: false,
-    compress: true,
+    transpilePackages: ['framer-motion'],
+    swcMinify: true,
     images: {
-      domains: ['your-image-domain.com'],
-      formats: ['image/avif', 'image/webp'],
+      domains: ['your-domain-if-needed.com'],
+    },
+    experimental: {
+      serverComponentsExternalPackages: ['mongodb'],
+    },
+    webpack: (config) => {
+      config.module.rules.push({
+        test: /\.mjs$/,
+        include: /node_modules/,
+        type: "javascript/auto",
+      });
+      return config;
     },
     env: {
       NEXT_PUBLIC_SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL,
