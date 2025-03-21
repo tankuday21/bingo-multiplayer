@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import React, { useEffect, useState } from "react"
 import { useParams, useSearchParams } from "next/navigation"
 import { io, type Socket } from "socket.io-client"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,13 @@ import { BingoCard } from "@/components/bingo-card"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { ErrorBoundary } from "@/components/error-boundary"
+
+interface SocketError extends Error {
+  description?: string;
+  type?: string;
+  context?: any;
+  data?: any;
+}
 
 interface Player {
   id: string
@@ -63,30 +70,31 @@ function RoomContent() {
       query: {
         roomId,
         username,
+        gridSize: 5
       },
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
       timeout: 20000,
-      transports: ["polling", "websocket"],
+      transports: ['polling', 'websocket'],
       forceNew: true,
       autoConnect: true,
-      path: '/socket.io',
+      path: '/socket.io/',
       withCredentials: true,
-      rejectUnauthorized: false,
-      secure: true
+      closeOnBeforeunload: false
     })
 
-    // Add error handling
-    newSocket.on("connect_error", (error) => {
+    // Add connection error handling
+    newSocket.on("connect_error", (error: SocketError) => {
       console.error("Connection error details:", {
         message: error.message,
         description: error.description,
         type: error.type,
-        context: error.context
+        context: error.context,
+        data: error.data
       })
       toast({
         title: "Connection Error",
-        description: `Failed to connect: ${error.message}`,
+        description: `Failed to connect: ${error.message}. Retrying...`,
         variant: "destructive",
       })
     })
@@ -100,13 +108,10 @@ function RoomContent() {
       })
     })
 
-    setSocket(newSocket)
-
-    // Socket event listeners
     newSocket.on("connect", () => {
+      console.log("Connected successfully to server:", socketUrl, "Socket ID:", newSocket.id)
       setIsConnected(true)
       setIsReconnecting(false)
-      console.log("Connected successfully to server:", socketUrl)
       toast({
         title: "Connected",
         description: "Successfully connected to the game server.",
@@ -114,8 +119,8 @@ function RoomContent() {
     })
 
     newSocket.on("disconnect", (reason) => {
-      setIsConnected(false)
       console.log("Disconnected from server. Reason:", reason)
+      setIsConnected(false)
       toast({
         title: "Disconnected",
         description: `Lost connection to server: ${reason}`,
@@ -124,14 +129,26 @@ function RoomContent() {
     })
 
     newSocket.on("reconnecting", (attemptNumber) => {
-      setIsReconnecting(true)
       console.log(`Reconnecting to server... Attempt ${attemptNumber}`)
+      setIsReconnecting(true)
       toast({
         title: "Reconnecting",
         description: `Attempting to reconnect (${attemptNumber}/5)...`,
       })
     })
 
+    newSocket.on("reconnect_failed", () => {
+      console.log("Failed to reconnect after all attempts")
+      toast({
+        title: "Connection Failed",
+        description: "Could not reconnect to the server. Please refresh the page.",
+        variant: "destructive",
+      })
+    })
+
+    setSocket(newSocket)
+
+    // Socket event listeners
     newSocket.on("gameState", (state: GameState) => {
       setGameState(state)
 
@@ -163,6 +180,7 @@ function RoomContent() {
 
     // Cleanup
     return () => {
+      console.log("Cleaning up socket connection")
       newSocket.disconnect()
     }
   }, [roomId, username, toast])

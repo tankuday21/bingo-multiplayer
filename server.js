@@ -61,35 +61,50 @@ const server = http.createServer(app)
 const io = new Server(server, {
   cors: {
     origin: function(origin, callback) {
-      console.log('Incoming connection from origin:', origin)
+      console.log('Incoming connection from origin:', origin);
       // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true)
-      if (CORS_ORIGINS.indexOf(origin) !== -1) {
-        console.log('Origin allowed:', origin)
-        callback(null, true)
+      if (!origin) {
+        console.log('Allowing connection with no origin');
+        return callback(null, true);
+      }
+      if (CORS_ORIGINS.indexOf(origin) !== -1 || origin.includes('localhost')) {
+        console.log('Origin allowed:', origin);
+        callback(null, true);
       } else {
-        console.log('CORS blocked for origin:', origin)
-        callback(new Error('Not allowed by CORS'))
+        console.log('CORS blocked for origin:', origin);
+        callback(new Error('Not allowed by CORS'));
       }
     },
     methods: ["GET", "POST"],
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"]
   },
-  path: '/socket.io',
+  path: '/socket.io/',
+  serveClient: false,
   pingTimeout: 60000,
   pingInterval: 25000,
-  transports: ["polling", "websocket"],
-  allowEIO3: true,
-  allowUpgrades: true,
   connectTimeout: 45000,
-  maxHttpBufferSize: 1e8
-})
+  maxHttpBufferSize: 1e8,
+  transports: ['polling', 'websocket'],
+  allowUpgrades: true,
+  perMessageDeflate: {
+    threshold: 32768
+  }
+});
 
 // Add connection error handling
 io.engine.on("connection_error", (err) => {
-  console.log('Connection error:', err.code, err.message, err.context)
-})
+  console.log('Connection error:', {
+    code: err.code,
+    message: err.message,
+    type: err.type,
+    req: {
+      url: err.req?.url,
+      headers: err.req?.headers,
+      query: err.req?.query
+    }
+  });
+});
 
 // MongoDB connection with retry logic
 let db
@@ -244,25 +259,29 @@ function getRandomNumber(min, max) {
 
 // Socket.io connection handler
 io.on("connection", (socket) => {
-  console.log("New client connected:", socket.id)
-  console.log('Client handshake:', socket.handshake)
+  console.log("New client connected:", {
+    id: socket.id,
+    query: socket.handshake.query,
+    headers: socket.handshake.headers,
+    address: socket.handshake.address
+  });
 
-  socket.on('disconnect', (reason) => {
-    console.log('Client disconnected:', socket.id, 'Reason:', reason)
-  })
+  const { roomId, username } = socket.handshake.query;
+  const gridSize = Number.parseInt(socket.handshake.query.gridSize) || 5;
 
-  socket.on('error', (error) => {
-    console.log('Socket error:', socket.id, error)
-  })
-
-  const { roomId, username } = socket.handshake.query
-  const gridSize = Number.parseInt(socket.handshake.query.gridSize) || 5
+  if (!roomId || !username) {
+    console.log('Missing roomId or username, disconnecting socket:', socket.id);
+    socket.disconnect();
+    return;
+  }
 
   // Join room
-  socket.join(roomId)
+  socket.join(roomId);
+  console.log(`Socket ${socket.id} joined room ${roomId}`);
 
   // Initialize room if it doesn't exist
   if (!rooms.has(roomId)) {
+    console.log(`Creating new room: ${roomId}`);
     rooms.set(roomId, {
       id: roomId,
       players: [],
@@ -274,17 +293,18 @@ io.on("connection", (socket) => {
       gridSize: gridSize,
       winner: null,
       lastActivity: new Date(),
-    })
+    });
   }
 
   // Get room data
-  const room = rooms.get(roomId)
+  const room = rooms.get(roomId);
 
   // Check if room is full
   if (room.players.length >= 8) {
-    socket.emit("roomFull")
-    socket.disconnect()
-    return
+    console.log(`Room ${roomId} is full, disconnecting socket:`, socket.id);
+    socket.emit("roomFull");
+    socket.disconnect();
+    return;
   }
 
   // Create player
@@ -482,6 +502,14 @@ io.on("connection", (socket) => {
       winner: room.winner,
     })
   })
+
+  socket.on('error', (error) => {
+    console.log('Socket error:', {
+      id: socket.id,
+      room: roomId,
+      error: error
+    });
+  });
 })
 
 // Turn timer function
