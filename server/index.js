@@ -63,6 +63,7 @@ io.on('connection', (socket) => {
 
   socket.on('createRoom', async (roomId) => {
     try {
+      console.log('Creating room:', roomId);
       const db = await client.connect().then(client => client.db('bingo'));
       const collection = db.collection('rooms');
       
@@ -87,7 +88,9 @@ io.on('connection', (socket) => {
       await collection.insertOne(room);
       rooms.set(roomId, room);
       socket.join(roomId);
+      console.log('Room created, emitting roomCreated event');
       io.to(roomId).emit('roomCreated', room);
+      io.to(roomId).emit('gameState', room.gameState);
     } catch (error) {
       console.error('Error creating room:', error);
       socket.emit('error', { message: 'Failed to create room' });
@@ -96,16 +99,19 @@ io.on('connection', (socket) => {
 
   socket.on('joinRoom', async (roomId) => {
     try {
+      console.log('Joining room:', roomId);
       const db = await client.connect().then(client => client.db('bingo'));
       const collection = db.collection('rooms');
       
       const room = await collection.findOne({ id: roomId });
       if (!room) {
+        console.log('Room not found:', roomId);
         socket.emit('error', { message: 'Room not found' });
         return;
       }
 
       if (room.players.length >= 2) {
+        console.log('Room is full:', roomId);
         socket.emit('error', { message: 'Room is full' });
         return;
       }
@@ -125,6 +131,7 @@ io.on('connection', (socket) => {
       
       rooms.set(roomId, room);
       socket.join(roomId);
+      console.log('Player joined, emitting events');
       io.to(roomId).emit('playerJoined', { room, newPlayer });
       io.to(roomId).emit('gameState', room.gameState);
     } catch (error) {
@@ -135,13 +142,16 @@ io.on('connection', (socket) => {
 
   socket.on('startGame', async (roomId) => {
     try {
+      console.log('Starting game in room:', roomId);
       const room = rooms.get(roomId);
       if (!room) {
+        console.log('Room not found:', roomId);
         socket.emit('error', { message: 'Room not found' });
         return;
       }
 
       if (room.players.length < 2) {
+        console.log('Not enough players:', roomId);
         socket.emit('error', { message: 'Need at least 2 players to start' });
         return;
       }
@@ -156,6 +166,7 @@ io.on('connection', (socket) => {
         { $set: { gameState: room.gameState } }
       );
 
+      console.log('Game started, emitting gameState event');
       io.to(roomId).emit('gameState', room.gameState);
     } catch (error) {
       console.error('Error starting game:', error);
@@ -165,23 +176,28 @@ io.on('connection', (socket) => {
 
   socket.on('selectCell', async ({ roomId, row, col }) => {
     try {
+      console.log('Selecting cell:', { roomId, row, col });
       const room = rooms.get(roomId);
       if (!room) {
+        console.log('Room not found:', roomId);
         socket.emit('error', { message: 'Room not found' });
         return;
       }
 
       if (!room.gameState.gameStarted) {
+        console.log('Game not started:', roomId);
         socket.emit('error', { message: 'Game has not started yet' });
         return;
       }
 
       if (room.gameState.currentTurn !== socket.id) {
+        console.log('Not player\'s turn:', socket.id);
         socket.emit('error', { message: 'Not your turn' });
         return;
       }
 
       if (room.gameState.board[row][col]) {
+        console.log('Cell already selected:', { row, col });
         socket.emit('error', { message: 'Cell already selected' });
         return;
       }
@@ -207,6 +223,7 @@ io.on('connection', (socket) => {
         { $set: { gameState: room.gameState } }
       );
 
+      console.log('Cell selected, emitting gameState event');
       io.to(roomId).emit('gameState', room.gameState);
     } catch (error) {
       console.error('Error selecting cell:', error);
