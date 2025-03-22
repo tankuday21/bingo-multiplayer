@@ -35,32 +35,65 @@ function RoomContent() {
   const { toast } = useToast()
   const [socket, setSocket] = useState<Socket | null>(null)
   const [gameState, setGameState] = useState<GameState | null>(null)
+  const [roomState, setRoomState] = useState<any>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     // Initialize socket connection
-    const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001")
+    const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001", {
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      timeout: 10000
+    })
     setSocket(newSocket)
 
     // Socket event listeners
     newSocket.on("connect", () => {
+      console.log("Connected to server")
       setIsConnected(true)
       setIsLoading(false)
       newSocket.emit("joinRoom", { roomId: params.roomId })
     })
 
-    newSocket.on("disconnect", () => {
+    newSocket.on("connect_error", (error) => {
+      console.error("Connection error:", error)
       setIsConnected(false)
       setIsLoading(false)
+      toast({
+        title: "Connection Error",
+        description: "Failed to connect to the game server. Please try again.",
+        variant: "destructive",
+      })
+    })
+
+    newSocket.on("disconnect", (reason) => {
+      console.log("Disconnected from server:", reason)
+      setIsConnected(false)
+      setIsLoading(false)
+      if (reason === "io server disconnect") {
+        toast({
+          title: "Disconnected",
+          description: "You have been disconnected from the server. Please refresh the page.",
+          variant: "destructive",
+        })
+      }
+    })
+
+    newSocket.on("roomState", (state) => {
+      console.log("Received room state:", state)
+      setRoomState(state)
     })
 
     newSocket.on("gameState", (state: GameState) => {
+      console.log("Received game state:", state)
       setGameState(state)
       setIsLoading(false)
     })
 
     newSocket.on("error", (error: { message: string }) => {
+      console.error("Socket error:", error)
       toast({
         title: "Error",
         description: error.message,

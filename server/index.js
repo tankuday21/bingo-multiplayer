@@ -132,8 +132,28 @@ io.on('connection', (socket) => {
       rooms.set(roomId, room);
       socket.join(roomId);
       console.log('Player joined, emitting events');
-      io.to(roomId).emit('playerJoined', { room, newPlayer });
-      io.to(roomId).emit('gameState', room.gameState);
+      
+      // Emit room state first
+      socket.emit('roomState', room);
+      
+      // Then emit game state
+      if (room.gameState) {
+        console.log('Emitting game state:', room.gameState);
+        socket.emit('gameState', room.gameState);
+      } else {
+        console.log('No game state available');
+        socket.emit('gameState', {
+          grid: generateGrid(),
+          currentTurn: null,
+          board: Array(5).fill().map(() => Array(5).fill(false)),
+          winner: null,
+          isGameOver: false,
+          gameStarted: false
+        });
+      }
+      
+      // Notify other players
+      socket.to(roomId).emit('playerJoined', { room, newPlayer });
     } catch (error) {
       console.error('Error joining room:', error);
       socket.emit('error', { message: 'Failed to join room' });
