@@ -1,16 +1,17 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
-import { useParams, useSearchParams } from "next/navigation"
-import { io, type Socket } from "socket.io-client"
+import { useParams, useRouter } from "next/navigation"
+import { io, Socket } from "socket.io-client"
 import { Button } from "@/components/ui/button"
-import { useToast } from "@/hooks/use-toast"
+import { useToast } from "@/components/ui/use-toast"
 import Link from "next/link"
-import { ArrowLeft, Copy, Users, Timer, AlertCircle } from "lucide-react"
+import { ArrowLeft, Copy, Users, Timer, AlertCircle, Trophy, Sparkles } from "lucide-react"
 import { BingoCard } from "@/components/bingo-card"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { ErrorBoundary } from "@/components/error-boundary"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 interface SocketError extends Error {
   description?: string;
@@ -19,369 +20,218 @@ interface SocketError extends Error {
   data?: any;
 }
 
-interface Player {
-  id: string
-  username: string
-  score: number
+interface GameState {
   grid: number[][]
   markedCells: boolean[][]
-}
-
-interface GameState {
-  roomId: string
-  players: Player[]
   currentTurn: string
-  calledNumbers: number[]
-  turnTimeLeft: number
-  gridSize: number
+  players: {
+    id: string
+    username: string
+    completedLines: number
+    isWinner: boolean
+  }[]
+  winners: string[]
   gameStarted: boolean
   gameEnded: boolean
-  winner: string | null
+  turnTimer: number
 }
 
 function RoomContent() {
   const params = useParams()
-  const searchParams = useSearchParams()
-  const roomId = params.roomId as string
-  const username = searchParams.get("username") || "Guest"
+  const router = useRouter()
   const { toast } = useToast()
-
   const [socket, setSocket] = useState<Socket | null>(null)
   const [gameState, setGameState] = useState<GameState | null>(null)
-  const [player, setPlayer] = useState<Player | null>(null)
+  const [username, setUsername] = useState("")
+  const [roomId, setRoomId] = useState("")
   const [isConnected, setIsConnected] = useState(false)
-  const [isReconnecting, setIsReconnecting] = useState(false)
+  const [timeLeft, setTimeLeft] = useState(20)
 
   useEffect(() => {
-    // Initialize socket connection
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL
-    if (!socketUrl) {
-      toast({
-        title: "Connection Error",
-        description: "Server URL is not configured. Please try again later.",
-        variant: "destructive",
-      })
+    // Get username from localStorage
+    const savedUsername = localStorage.getItem("username")
+    if (savedUsername) {
+      setUsername(savedUsername)
+    } else {
+      router.push("/")
       return
     }
 
-    console.log("Attempting to connect to:", socketUrl)
+    // Get roomId from URL params
+    if (params.roomId) {
+      setRoomId(params.roomId as string)
+    }
 
-    const newSocket = io(socketUrl, {
-      query: {
-        roomId,
-        username,
-        gridSize: 5
-      },
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      timeout: 20000,
-      transports: ['websocket', 'polling'],
-      forceNew: true,
-      autoConnect: true,
-      path: '/socket.io/',
-      withCredentials: true,
-      closeOnBeforeunload: false,
-      rejectUnauthorized: false,
-      extraHeaders: {
-        'Access-Control-Allow-Credentials': 'true'
-      }
-    })
-
-    // Add connection error handling with retries
-    let retryCount = 0;
-    const maxRetries = 5;
-
-    newSocket.on("connect_error", (error: SocketError) => {
-      console.error("Connection error details:", {
-        message: error.message,
-        description: error.description,
-        type: error.type,
-        context: error.context,
-        data: error.data,
-        retryCount
-      });
-
-      if (retryCount < maxRetries) {
-        retryCount++;
-        console.log(`Retrying connection (${retryCount}/${maxRetries})...`);
-        setTimeout(() => {
-          newSocket.connect();
-        }, 1000 * retryCount);
-      } else {
-        toast({
-          title: "Connection Error",
-          description: `Failed to connect after ${maxRetries} attempts. Please refresh the page.`,
-          variant: "destructive",
-        });
-      }
-    })
-
-    newSocket.on("error", (error) => {
-      console.error("Socket error:", error)
-      toast({
-        title: "Socket Error",
-        description: "An error occurred with the connection.",
-        variant: "destructive",
-      })
-    })
-
-    newSocket.on("connect", () => {
-      console.log("Connected successfully to server:", socketUrl, "Socket ID:", newSocket.id)
-      setIsConnected(true)
-      setIsReconnecting(false)
-      toast({
-        title: "Connected",
-        description: "Successfully connected to the game server.",
-      })
-    })
-
-    newSocket.on("disconnect", (reason) => {
-      console.log("Disconnected from server. Reason:", reason)
-      setIsConnected(false)
-      toast({
-        title: "Disconnected",
-        description: `Lost connection to server: ${reason}`,
-        variant: "destructive",
-      })
-    })
-
-    newSocket.on("reconnecting", (attemptNumber) => {
-      console.log(`Reconnecting to server... Attempt ${attemptNumber}`)
-      setIsReconnecting(true)
-      toast({
-        title: "Reconnecting",
-        description: `Attempting to reconnect (${attemptNumber}/5)...`,
-      })
-    })
-
-    newSocket.on("reconnect_failed", () => {
-      console.log("Failed to reconnect after all attempts")
-      toast({
-        title: "Connection Failed",
-        description: "Could not reconnect to the server. Please refresh the page.",
-        variant: "destructive",
-      })
-    })
-
+    // Initialize socket connection
+    const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001")
     setSocket(newSocket)
 
     // Socket event listeners
-    newSocket.on("gameState", (state: GameState) => {
+    newSocket.on("connect", () => {
+      setIsConnected(true)
+      newSocket.emit("join_room", { roomId: params.roomId, username: savedUsername })
+    })
+
+    newSocket.on("disconnect", () => {
+      setIsConnected(false)
+    })
+
+    newSocket.on("game_state", (state: GameState) => {
       setGameState(state)
-
-      // Find current player
-      const currentPlayer = state.players.find((p) => p.id === newSocket.id)
-      if (currentPlayer) {
-        setPlayer(currentPlayer)
-      }
     })
 
-    newSocket.on("roomFull", () => {
+    newSocket.on("turn_timer", (time: number) => {
+      setTimeLeft(time)
+    })
+
+    newSocket.on("player_skipped", (skippedPlayer: string) => {
       toast({
-        title: "Room is full",
-        description: "This room has reached its maximum capacity of 8 players.",
-        variant: "destructive",
+        title: "Turn Skipped",
+        description: `${skippedPlayer} didn't make a move in time.`,
       })
-      // Redirect to home page after 3 seconds
-      setTimeout(() => {
-        window.location.href = "/"
-      }, 3000)
     })
 
-    newSocket.on("gameWon", (winner: string) => {
+    newSocket.on("player_win", (winner: string) => {
       toast({
-        title: "Game Over!",
+        title: "Winner!",
         description: `${winner} has won the game!`,
       })
     })
 
-    // Cleanup
+    newSocket.on("game_end", () => {
+      toast({
+        title: "Game Over",
+        description: "The game has ended. Check the leaderboard!",
+      })
+      router.push("/")
+    })
+
     return () => {
-      console.log("Cleaning up socket connection")
       newSocket.disconnect()
     }
-  }, [roomId, username, toast])
+  }, [params.roomId, router, toast])
 
   const handleCellClick = (row: number, col: number) => {
-    if (!socket || !gameState || !player || !gameState.gameStarted || gameState.gameEnded) return
+    if (!socket || !gameState || gameState.currentTurn !== username) return
 
-    const value = player.grid[row][col]
-
-    // Check if the number has been called
-    if (gameState.calledNumbers.includes(value)) {
-      socket.emit("markCell", { row, col })
-    }
+    socket.emit("mark_cell", {
+      roomId,
+      username,
+      row,
+      col,
+    })
   }
 
   const handleStartGame = () => {
     if (!socket) return
-    socket.emit("startGame")
+    socket.emit("start_game", { roomId })
   }
 
-  const copyRoomCode = () => {
-    navigator.clipboard.writeText(roomId)
-    toast({
-      title: "Room code copied",
-      description: "The room code has been copied to your clipboard.",
-    })
-  }
-
-  if (!isConnected) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center space-y-4"
-        >
-          <h1 className="text-2xl font-bold">{isReconnecting ? "Reconnecting..." : "Connecting to server..."}</h1>
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary mx-auto"></div>
-        </motion.div>
-      </div>
-    )
+  const handleLeaveRoom = () => {
+    if (!socket) return
+    socket.emit("leave_room", { roomId, username })
+    router.push("/")
   }
 
   if (!gameState) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center space-y-4"
-        >
-          <h1 className="text-2xl font-bold">Loading game...</h1>
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary mx-auto"></div>
-        </motion.div>
+      <div className="flex min-h-screen flex-col items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-4">Waiting for game to start...</h1>
+          <Button onClick={handleStartGame}>Start Game</Button>
+          <Button variant="outline" onClick={handleLeaveRoom} className="ml-2">
+            Leave Room
+          </Button>
+        </div>
       </div>
     )
   }
 
+  const isCurrentTurn = gameState.currentTurn === username
+  const isWinner = gameState.winners.includes(username)
+  const playerRank = gameState.winners.indexOf(username) + 1
+
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <motion.header
-        initial={{ y: -100 }}
-        animate={{ y: 0 }}
-        className="border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60"
-      >
+    <div className="flex min-h-screen flex-col">
+      <header className="sticky top-0 z-30 w-full border-b backdrop-blur-md bg-background/70">
         <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <h1 className="text-2xl font-bold tracking-tight">Bingo Room</h1>
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            <h1 className="text-xl font-bold tracking-tight">Room: {roomId}</h1>
           </div>
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={copyRoomCode}>
-                Room: {roomId} <Copy className="ml-2 h-4 w-4" />
-              </Button>
+            <div className="text-sm">
+              {isCurrentTurn ? (
+                <span className="text-green-500">Your turn! ({timeLeft}s)</span>
+              ) : (
+                <span className="text-muted-foreground">
+                  {gameState.currentTurn}'s turn
+                </span>
+              )}
             </div>
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              <span>{gameState.players.length}/8</span>
-            </div>
+            <ThemeToggle />
+            <Button variant="outline" onClick={handleLeaveRoom}>
+              Leave Room
+            </Button>
           </div>
         </div>
-      </motion.header>
+      </header>
 
-      <main className="flex-1 container py-6">
-        <div className="grid lg:grid-cols-[1fr_300px] gap-6">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="space-y-6"
-          >
-            {!gameState.gameStarted && gameState.players.length >= 2 && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-center"
-              >
-                <Button onClick={handleStartGame} size="lg" className="animate-pulse">
-                  Start Game
-                </Button>
-              </motion.div>
-            )}
+      <main className="flex-1 container py-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {/* Game Board */}
+          <div className="md:col-span-2">
+            <BingoCard
+              grid={gameState.grid}
+              markedCells={gameState.markedCells}
+              onCellClick={handleCellClick}
+              isCurrentTurn={isCurrentTurn}
+              disabled={!isCurrentTurn || gameState.gameEnded}
+            />
+          </div>
 
-            {!gameState.gameStarted && gameState.players.length < 2 && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-center p-6 border rounded-lg bg-card"
-              >
-                <h2 className="text-xl font-semibold mb-2">Waiting for players...</h2>
-                <p className="text-muted-foreground">Share the room code with your friends to start playing.</p>
-              </motion.div>
-            )}
-
-            {gameState.gameStarted && player && (
-              <div className="space-y-6">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <h2 className="text-xl font-semibold">Your Bingo Card</h2>
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Timer className="h-4 w-4" />
-                    <span>
-                      Turn: {gameState.currentTurn === socket?.id ? "Your turn" : "Opponent's turn"}
-                      {gameState.turnTimeLeft > 0 && <span className="ml-2">({gameState.turnTimeLeft}s)</span>}
-                    </span>
-                  </div>
-                </div>
-
-                <BingoCard
-                  grid={player.grid}
-                  markedCells={player.markedCells}
-                  calledNumbers={gameState.calledNumbers}
-                  onCellClick={handleCellClick}
-                  isCurrentTurn={gameState.currentTurn === socket?.id}
-                  disabled={!gameState.gameStarted || gameState.gameEnded}
-                />
-              </div>
-            )}
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="space-y-6"
-          >
-            <div className="bg-card rounded-lg p-4 shadow-lg">
-              <h3 className="font-semibold mb-4">Players</h3>
+          {/* Players and Winners List */}
+          <div className="space-y-6">
+            <div className="rounded-lg border bg-card p-4">
+              <h2 className="text-lg font-semibold mb-4">Players</h2>
               <div className="space-y-2">
-                {gameState.players.map((p) => (
+                {gameState.players.map((player) => (
                   <div
-                    key={p.id}
-                    className={cn(
-                      "flex items-center justify-between p-2 rounded-md",
-                      p.id === socket?.id ? "bg-primary/10" : "bg-muted"
-                    )}
+                    key={player.id}
+                    className={`flex items-center justify-between p-2 rounded ${
+                      player.username === username
+                        ? "bg-primary/10"
+                        : "bg-muted/50"
+                    }`}
                   >
-                    <span>{p.username}</span>
-                    <span className="text-sm text-muted-foreground">{p.score} points</span>
+                    <span>{player.username}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {player.completedLines} lines
+                    </span>
                   </div>
                 ))}
               </div>
             </div>
 
-            {gameState.gameStarted && (
-              <div className="bg-card rounded-lg p-4 shadow-lg">
-                <h3 className="font-semibold mb-4">Called Numbers</h3>
-                <div className="flex flex-wrap gap-2">
-                  {gameState.calledNumbers.map((num) => (
-                    <motion.div
-                      key={num}
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="w-8 h-8 flex items-center justify-center rounded-full bg-primary text-primary-foreground"
+            {gameState.winners.length > 0 && (
+              <div className="rounded-lg border bg-card p-4">
+                <h2 className="text-lg font-semibold mb-4">Winners</h2>
+                <div className="space-y-2">
+                  {gameState.winners.map((winner, index) => (
+                    <div
+                      key={winner}
+                      className="flex items-center gap-2 p-2 rounded bg-primary/10"
                     >
-                      {num}
-                    </motion.div>
+                      <Trophy className="h-4 w-4 text-yellow-500" />
+                      <span>
+                        {index + 1}. {winner}
+                      </span>
+                    </div>
                   ))}
                 </div>
               </div>
             )}
-          </motion.div>
+          </div>
         </div>
       </main>
     </div>
