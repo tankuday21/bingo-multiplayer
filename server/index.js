@@ -34,10 +34,27 @@ app.use(limiter);
 
 // MongoDB connection
 const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
-const client = new MongoClient(uri, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
+let db = null;
+
+async function connectToMongoDB() {
+  try {
+    const client = await MongoClient.connect(uri, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+    db = client.db('bingo');
+    console.log('Connected to MongoDB');
+    return db;
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+    throw error;
+  }
+}
+
+// Initialize MongoDB connection
+connectToMongoDB().catch(console.error);
 
 // Game state
 const rooms = new Map();
@@ -64,7 +81,9 @@ io.on('connection', (socket) => {
   socket.on('createRoom', async (roomId) => {
     try {
       console.log('Creating room:', roomId);
-      const db = await client.connect().then(client => client.db('bingo'));
+      if (!db) {
+        throw new Error('Database connection not available');
+      }
       const collection = db.collection('rooms');
       
       const room = {
@@ -89,8 +108,8 @@ io.on('connection', (socket) => {
       rooms.set(roomId, room);
       socket.join(roomId);
       console.log('Room created, emitting roomCreated event');
-      io.to(roomId).emit('roomCreated', room);
-      io.to(roomId).emit('gameState', room.gameState);
+      socket.emit('roomCreated', room);
+      socket.emit('gameState', room.gameState);
     } catch (error) {
       console.error('Error creating room:', error);
       socket.emit('error', { message: 'Failed to create room' });
@@ -100,7 +119,9 @@ io.on('connection', (socket) => {
   socket.on('joinRoom', async (roomId) => {
     try {
       console.log('Joining room:', roomId);
-      const db = await client.connect().then(client => client.db('bingo'));
+      if (!db) {
+        throw new Error('Database connection not available');
+      }
       const collection = db.collection('rooms');
       
       const room = await collection.findOne({ id: roomId });
@@ -141,15 +162,21 @@ io.on('connection', (socket) => {
         console.log('Emitting game state:', room.gameState);
         socket.emit('gameState', room.gameState);
       } else {
-        console.log('No game state available');
-        socket.emit('gameState', {
+        console.log('No game state available, creating new one');
+        const newGameState = {
           grid: generateGrid(),
           currentTurn: null,
           board: Array(5).fill().map(() => Array(5).fill(false)),
           winner: null,
           isGameOver: false,
           gameStarted: false
-        });
+        };
+        room.gameState = newGameState;
+        await collection.updateOne(
+          { id: roomId },
+          { $set: { gameState: newGameState } }
+        );
+        socket.emit('gameState', newGameState);
       }
       
       // Notify other players
@@ -179,7 +206,6 @@ io.on('connection', (socket) => {
       room.gameState.gameStarted = true;
       room.gameState.currentTurn = room.players[0].id;
 
-      const db = await client.connect().then(client => client.db('bingo'));
       const collection = db.collection('rooms');
       await collection.updateOne(
         { id: roomId },
@@ -197,10 +223,19 @@ io.on('connection', (socket) => {
   socket.on('selectCell', async ({ roomId, row, col }) => {
     try {
       console.log('Selecting cell:', { roomId, row, col });
+      if (!db) {
+        throw new Error('Database connection not available');
+      }
       const room = rooms.get(roomId);
       if (!room) {
         console.log('Room not found:', roomId);
         socket.emit('error', { message: 'Room not found' });
+        return;
+      }
+
+      if (!room.gameState) {
+        console.log('No game state found:', roomId);
+        socket.emit('error', { message: 'Game state not found' });
         return;
       }
 
@@ -236,7 +271,6 @@ io.on('connection', (socket) => {
         room.gameState.currentTurn = room.players[nextPlayerIndex].id;
       }
 
-      const db = await client.connect().then(client => client.db('bingo'));
       const collection = db.collection('rooms');
       await collection.updateOne(
         { id: roomId },
@@ -263,7 +297,6 @@ io.on('connection', (socket) => {
         if (room.players.length === 0) {
           rooms.delete(roomId);
           try {
-            const db = await client.connect().then(client => client.db('bingo'));
             const collection = db.collection('rooms');
             await collection.deleteOne({ id: roomId });
           } catch (error) {
@@ -272,7 +305,6 @@ io.on('connection', (socket) => {
         } else {
           rooms.set(roomId, room);
           try {
-            const db = await client.connect().then(client => client.db('bingo'));
             const collection = db.collection('rooms');
             await collection.updateOne(
               { id: roomId },

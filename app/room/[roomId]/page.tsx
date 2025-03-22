@@ -38,71 +38,102 @@ function RoomContent() {
   const [roomState, setRoomState] = useState<any>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Initialize socket connection
-    const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001", {
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      timeout: 10000
-    })
-    setSocket(newSocket)
+    let timeoutId: NodeJS.Timeout;
 
-    // Socket event listeners
-    newSocket.on("connect", () => {
-      console.log("Connected to server")
-      setIsConnected(true)
-      setIsLoading(false)
-      newSocket.emit("joinRoom", { roomId: params.roomId })
-    })
-
-    newSocket.on("connect_error", (error) => {
-      console.error("Connection error:", error)
-      setIsConnected(false)
-      setIsLoading(false)
-      toast({
-        title: "Connection Error",
-        description: "Failed to connect to the game server. Please try again.",
-        variant: "destructive",
+    const initializeSocket = () => {
+      // Initialize socket connection
+      const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001", {
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        timeout: 10000,
+        transports: ['websocket', 'polling']
       })
-    })
+      setSocket(newSocket)
 
-    newSocket.on("disconnect", (reason) => {
-      console.log("Disconnected from server:", reason)
-      setIsConnected(false)
-      setIsLoading(false)
-      if (reason === "io server disconnect") {
+      // Socket event listeners
+      newSocket.on("connect", () => {
+        console.log("Connected to server")
+        setIsConnected(true)
+        setIsLoading(false)
+        setError(null)
+        newSocket.emit("joinRoom", { roomId: params.roomId })
+      })
+
+      newSocket.on("connect_error", (error) => {
+        console.error("Connection error:", error)
+        setIsConnected(false)
+        setIsLoading(false)
+        setError("Failed to connect to the game server. Please try again.")
         toast({
-          title: "Disconnected",
-          description: "You have been disconnected from the server. Please refresh the page.",
+          title: "Connection Error",
+          description: "Failed to connect to the game server. Please try again.",
+          variant: "destructive",
+        })
+      })
+
+      newSocket.on("disconnect", (reason) => {
+        console.log("Disconnected from server:", reason)
+        setIsConnected(false)
+        setIsLoading(false)
+        if (reason === "io server disconnect") {
+          setError("You have been disconnected from the server. Please refresh the page.")
+          toast({
+            title: "Disconnected",
+            description: "You have been disconnected from the server. Please refresh the page.",
+            variant: "destructive",
+          })
+        }
+      })
+
+      newSocket.on("roomState", (state) => {
+        console.log("Received room state:", state)
+        setRoomState(state)
+      })
+
+      newSocket.on("gameState", (state: GameState) => {
+        console.log("Received game state:", state)
+        setGameState(state)
+        setIsLoading(false)
+        setError(null)
+      })
+
+      newSocket.on("error", (error: { message: string }) => {
+        console.error("Socket error:", error)
+        setError(error.message)
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        })
+      })
+    }
+
+    initializeSocket()
+
+    // Set a timeout for loading state
+    timeoutId = setTimeout(() => {
+      if (isLoading) {
+        setIsLoading(false)
+        setError("Connection timeout. Please refresh the page.")
+        toast({
+          title: "Connection Timeout",
+          description: "Failed to connect to the server. Please refresh the page.",
           variant: "destructive",
         })
       }
-    })
-
-    newSocket.on("roomState", (state) => {
-      console.log("Received room state:", state)
-      setRoomState(state)
-    })
-
-    newSocket.on("gameState", (state: GameState) => {
-      console.log("Received game state:", state)
-      setGameState(state)
-      setIsLoading(false)
-    })
-
-    newSocket.on("error", (error: { message: string }) => {
-      console.error("Socket error:", error)
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      })
-    })
+    }, 15000)
 
     return () => {
-      newSocket.disconnect()
+      if (socket) {
+        socket.disconnect()
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
     }
   }, [params.roomId, toast])
 
@@ -127,11 +158,23 @@ function RoomContent() {
     router.push("/")
   }
 
+  if (error) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-4 text-red-500">{error}</h1>
+          <Button onClick={() => window.location.reload()}>Refresh Page</Button>
+        </div>
+      </div>
+    )
+  }
+
   if (isLoading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4">Loading game...</h1>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
         </div>
       </div>
     )
