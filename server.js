@@ -7,8 +7,6 @@ const cors = require("cors")
 const helmet = require("helmet")
 const rateLimit = require("express-rate-limit")
 const compression = require("compression")
-require('ts-node').register()
-require('./server/index.ts')
 
 // Environment variables
 const {
