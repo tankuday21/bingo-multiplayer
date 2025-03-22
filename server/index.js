@@ -42,6 +42,21 @@ const client = new MongoClient(uri, {
 // Game state
 const rooms = new Map();
 
+// Helper function to generate a random grid
+function generateGrid() {
+  const grid = Array(5).fill().map(() => Array(5).fill(0));
+  const numbers = Array.from({ length: 25 }, (_, i) => i + 1);
+  
+  for (let i = 0; i < 5; i++) {
+    for (let j = 0; j < 5; j++) {
+      const randomIndex = Math.floor(Math.random() * numbers.length);
+      grid[i][j] = numbers.splice(randomIndex, 1)[0];
+    }
+  }
+  
+  return grid;
+}
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
@@ -59,10 +74,12 @@ io.on('connection', (socket) => {
           isHost: true
         }],
         gameState: {
+          grid: generateGrid(),
           currentTurn: socket.id,
           board: Array(5).fill().map(() => Array(5).fill(false)),
           winner: null,
-          isGameOver: false
+          isGameOver: false,
+          gameStarted: false
         },
         createdAt: new Date()
       };
@@ -109,9 +126,40 @@ io.on('connection', (socket) => {
       rooms.set(roomId, room);
       socket.join(roomId);
       io.to(roomId).emit('playerJoined', { room, newPlayer });
+      io.to(roomId).emit('gameState', room.gameState);
     } catch (error) {
       console.error('Error joining room:', error);
       socket.emit('error', { message: 'Failed to join room' });
+    }
+  });
+
+  socket.on('startGame', async (roomId) => {
+    try {
+      const room = rooms.get(roomId);
+      if (!room) {
+        socket.emit('error', { message: 'Room not found' });
+        return;
+      }
+
+      if (room.players.length < 2) {
+        socket.emit('error', { message: 'Need at least 2 players to start' });
+        return;
+      }
+
+      room.gameState.gameStarted = true;
+      room.gameState.currentTurn = room.players[0].id;
+
+      const db = await client.connect().then(client => client.db('bingo'));
+      const collection = db.collection('rooms');
+      await collection.updateOne(
+        { id: roomId },
+        { $set: { gameState: room.gameState } }
+      );
+
+      io.to(roomId).emit('gameState', room.gameState);
+    } catch (error) {
+      console.error('Error starting game:', error);
+      socket.emit('error', { message: 'Failed to start game' });
     }
   });
 
@@ -120,6 +168,11 @@ io.on('connection', (socket) => {
       const room = rooms.get(roomId);
       if (!room) {
         socket.emit('error', { message: 'Room not found' });
+        return;
+      }
+
+      if (!room.gameState.gameStarted) {
+        socket.emit('error', { message: 'Game has not started yet' });
         return;
       }
 
@@ -154,7 +207,7 @@ io.on('connection', (socket) => {
         { $set: { gameState: room.gameState } }
       );
 
-      io.to(roomId).emit('gameStateUpdated', room.gameState);
+      io.to(roomId).emit('gameState', room.gameState);
     } catch (error) {
       console.error('Error selecting cell:', error);
       socket.emit('error', { message: 'Failed to update game state' });
