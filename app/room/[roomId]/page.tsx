@@ -61,14 +61,18 @@ function RoomContent() {
 
     const initializeSocket = () => {
       try {
-        // Initialize socket connection
-        const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001", {
+        // Initialize socket connection with better error handling
+        const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
+        console.log('Connecting to socket server:', socketUrl);
+        
+        const newSocket = io(socketUrl, {
           reconnection: true,
           reconnectionAttempts: 5,
           reconnectionDelay: 1000,
           timeout: 10000,
           transports: ['websocket', 'polling'],
-          autoConnect: true
+          autoConnect: true,
+          forceNew: true // Force a new connection each time
         });
 
         if (!isMounted) return;
@@ -77,11 +81,11 @@ function RoomContent() {
         // Socket event listeners
         newSocket.on("connect", () => {
           if (!isMounted) return;
-          console.log("Connected to server");
+          console.log("Connected to server successfully");
           setIsConnected(true);
           setIsLoading(false);
           setError(null);
-          retryCount = 0; // Reset retry count on successful connection
+          retryCount = 0;
           
           // Check if we're creating or joining a room
           const isCreatingRoom = params.roomId === 'new';
@@ -91,9 +95,10 @@ function RoomContent() {
             // Wait a bit before creating the room to ensure socket is ready
             setTimeout(() => {
               if (isMounted) {
+                console.log('Emitting createRoom event');
                 newSocket.emit("createRoom", newRoomId);
               }
-            }, 100);
+            }, 500); // Increased delay to ensure socket is ready
           } else {
             console.log('Joining existing room:', params.roomId);
             newSocket.emit("joinRoom", params.roomId);
@@ -105,10 +110,10 @@ function RoomContent() {
           console.error("Connection error:", error);
           setIsConnected(false);
           setIsLoading(false);
-          setError("Failed to connect to the game server. Please try again.");
+          setError(`Failed to connect to the game server: ${error.message}`);
           toast({
             title: "Connection Error",
-            description: "Failed to connect to the game server. Please try again.",
+            description: `Failed to connect to the game server: ${error.message}`,
             variant: "destructive",
           });
         });
@@ -130,15 +135,16 @@ function RoomContent() {
 
         newSocket.on("roomCreated", (room) => {
           if (!isMounted) return;
-          console.log("Room created:", room);
+          console.log("Room created successfully:", room);
           setRoomState(room);
           setGameState(room.gameState);
           // Wait a bit before redirecting to ensure state is updated
           setTimeout(() => {
             if (isMounted) {
+              console.log('Redirecting to room:', room.id);
               router.push(`/room/${room.id}`);
             }
-          }, 100);
+          }, 500); // Increased delay
         });
 
         newSocket.on("roomState", (state) => {
@@ -147,7 +153,7 @@ function RoomContent() {
           setRoomState(state);
         });
 
-        newSocket.on("gameState", (state: GameState) => {
+        newSocket.on("gameState", (state) => {
           if (!isMounted) return;
           console.log("Received game state:", state);
           setGameState(state);
@@ -167,7 +173,7 @@ function RoomContent() {
               if (isMounted && socket) {
                 socket.emit("joinRoom", params.roomId);
               }
-            }, 1000 * retryCount); // Exponential backoff
+            }, 1000 * retryCount);
             return;
           }
 
@@ -178,13 +184,13 @@ function RoomContent() {
             variant: "destructive",
           });
         });
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error initializing socket:", error);
         if (isMounted) {
-          setError("Failed to initialize game connection");
+          setError(`Failed to initialize game connection: ${error.message}`);
           toast({
             title: "Error",
-            description: "Failed to initialize game connection",
+            description: `Failed to initialize game connection: ${error.message}`,
             variant: "destructive",
           });
         }
