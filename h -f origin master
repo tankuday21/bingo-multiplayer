@@ -1,0 +1,5 @@
+[33mcommit 705964c366f5ac1a74fc4d3974c2a2237b835666[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m)[m
+Author: Uday Tank <tankuday21@gmail.com>
+Date:   Sun Mar 23 11:27:10 2025 +0530
+
+    fix: add detailed logging for room creation and database operations

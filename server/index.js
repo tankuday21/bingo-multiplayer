@@ -54,16 +54,20 @@ let mongoClient = null;
 async function connectToMongoDB() {
   try {
     if (mongoClient) {
+      console.log('Using existing MongoDB connection');
       return mongoClient.db('bingo');
     }
 
+    console.log('Creating new MongoDB connection...');
     mongoClient = await MongoClient.connect(uri, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
       maxPoolSize: 10,
-      minPoolSize: 5
+      minPoolSize: 5,
+      retryWrites: true,
+      retryReads: true
     });
 
     mongoClient.on('error', (error) => {
@@ -73,10 +77,11 @@ async function connectToMongoDB() {
     mongoClient.on('close', () => {
       console.log('MongoDB connection closed');
       mongoClient = null;
+      db = null;
     });
 
     db = mongoClient.db('bingo');
-    console.log('Connected to MongoDB');
+    console.log('Connected to MongoDB successfully');
     return db;
   } catch (error) {
     console.error('MongoDB connection error:', error);
@@ -84,8 +89,27 @@ async function connectToMongoDB() {
   }
 }
 
+// Initialize MongoDB connection with retry
+async function initializeMongoDB() {
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      await connectToMongoDB();
+      return;
+    } catch (error) {
+      retries--;
+      if (retries === 0) {
+        console.error('Failed to connect to MongoDB after 3 attempts');
+        throw error;
+      }
+      console.log(`MongoDB connection attempt failed, retrying... (${retries} attempts left)`);
+      await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds before retrying
+    }
+  }
+}
+
 // Initialize MongoDB connection
-connectToMongoDB().catch(console.error);
+initializeMongoDB().catch(console.error);
 
 // Game state
 const rooms = new Map();
@@ -169,10 +193,23 @@ io.on('connection', (socket) => {
       rooms.set(roomId, room);
       socket.join(roomId);
 
-      // Then save to database
+      // Then save to database with retry
       console.log('Saving room to database...');
-      const result = await collection.insertOne(room);
-      console.log('Database insert result:', result);
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          const result = await collection.insertOne(room);
+          console.log('Database insert result:', result);
+          break;
+        } catch (error) {
+          retries--;
+          if (retries === 0) {
+            throw error;
+          }
+          console.log(`Database insert failed, retrying... (${retries} attempts left)`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
       
       console.log('Room created successfully:', {
         roomId,
@@ -451,7 +488,22 @@ io.on('connection', (socket) => {
       console.log('In-memory room check:', inMemoryRoom ? 'Found' : 'Not found');
       
       console.log('Checking database for room...');
-      const dbRoom = await collection.findOne({ id: roomId });
+      let dbRoom = null;
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          dbRoom = await collection.findOne({ id: roomId });
+          break;
+        } catch (error) {
+          retries--;
+          if (retries === 0) {
+            throw error;
+          }
+          console.log(`Database query failed, retrying... (${retries} attempts left)`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
       console.log('Database room check:', dbRoom ? 'Found' : 'Not found');
       
       const exists = !!(inMemoryRoom || dbRoom);
