@@ -190,7 +190,7 @@ io.on('connection', (socket) => {
 
   socket.on('joinRoom', async (roomId) => {
     try {
-      console.log('Attempting to join room:', roomId);
+      console.log('Joining room:', roomId);
       if (!db) {
         console.log('Database not connected, attempting to connect...');
         db = await connectToMongoDB();
@@ -199,7 +199,7 @@ io.on('connection', (socket) => {
       
       // First check in-memory rooms
       let room = rooms.get(roomId);
-      console.log('In-memory room check:', room ? 'Found' : 'Not found');
+      console.log('Room in memory:', room ? 'Found' : 'Not found');
       
       // If not in memory, check database
       if (!room) {
@@ -238,14 +238,22 @@ io.on('connection', (socket) => {
 
       console.log('Adding new player to room:', newPlayer);
       room.players.push(newPlayer);
-
-      // Update both memory and database
-      rooms.set(roomId, room);
-      await collection.updateOne(
-        { id: roomId },
-        { $set: { players: room.players } }
-      );
       
+      try {
+        await collection.updateOne(
+          { id: roomId },
+          { $set: { players: room.players } }
+        );
+        console.log('Successfully updated room in database');
+      } catch (dbError) {
+        console.error('Error updating room in database:', dbError);
+        // Rollback the player addition
+        room.players = room.players.filter(p => p.id !== socket.id);
+        socket.emit('error', { message: 'Failed to update room state' });
+        return;
+      }
+      
+      rooms.set(roomId, room);
       socket.join(roomId);
       console.log('Player joined successfully:', {
         roomId,
@@ -258,10 +266,10 @@ io.on('connection', (socket) => {
       
       // Then emit game state
       if (room.gameState) {
-        console.log('Emitting existing game state');
+        console.log('Emitting game state:', room.gameState);
         socket.emit('gameState', room.gameState);
       } else {
-        console.log('No game state found, creating new one');
+        console.log('No game state available, creating new one');
         const newGameState = {
           grid: generateGrid(),
           currentTurn: null,
@@ -271,10 +279,17 @@ io.on('connection', (socket) => {
           gameStarted: false
         };
         room.gameState = newGameState;
-        await collection.updateOne(
-          { id: roomId },
-          { $set: { gameState: newGameState } }
-        );
+        try {
+          await collection.updateOne(
+            { id: roomId },
+            { $set: { gameState: newGameState } }
+          );
+          console.log('Successfully updated game state in database');
+        } catch (dbError) {
+          console.error('Error updating game state in database:', dbError);
+          socket.emit('error', { message: 'Failed to initialize game state' });
+          return;
+        }
         socket.emit('gameState', newGameState);
       }
       
