@@ -98,7 +98,7 @@ function RoomContent() {
                 console.log('Emitting createRoom event');
                 newSocket.emit("createRoom", newRoomId);
               }
-            }, 500);
+            }, 1000); // Increased delay to ensure socket is ready
           } else {
             console.log('Checking room existence before joining:', params.roomId);
             // First check if room exists
@@ -159,13 +159,14 @@ function RoomContent() {
           console.log("Room created successfully:", room);
           setRoomState(room);
           setGameState(room.gameState);
-          // Wait a bit before redirecting to ensure state is updated
+          
+          // Wait longer before redirecting to ensure room is properly set up
           setTimeout(() => {
             if (isMounted) {
               console.log('Redirecting to room:', room.id);
               router.push(`/room/${room.id}`);
             }
-          }, 500); // Increased delay
+          }, 2000); // Increased delay to 2 seconds
         });
 
         newSocket.on("roomState", (state) => {
@@ -204,6 +205,15 @@ function RoomContent() {
             description: error.message,
             variant: "destructive",
           });
+          
+          // If it's a room creation error, redirect back to home
+          if (error.message === 'Failed to create room') {
+            setTimeout(() => {
+              if (isMounted) {
+                router.push('/');
+              }
+            }, 2000);
+          }
         });
       } catch (error: any) {
         console.error("Error initializing socket:", error);
