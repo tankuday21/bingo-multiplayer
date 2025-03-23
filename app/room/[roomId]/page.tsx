@@ -66,7 +66,10 @@ function RoomContent() {
         if (isCreatingRoom) {
           const newRoomId = Math.random().toString(36).substring(2, 8)
           console.log('Creating new room:', newRoomId)
-          newSocket.emit("createRoom", newRoomId)
+          // Wait a bit before creating the room to ensure socket is ready
+          setTimeout(() => {
+            newSocket.emit("createRoom", newRoomId)
+          }, 100)
         } else {
           console.log('Joining existing room:', params.roomId)
           newSocket.emit("joinRoom", params.roomId)
@@ -102,8 +105,11 @@ function RoomContent() {
       newSocket.on("roomCreated", (room) => {
         console.log("Room created:", room)
         setRoomState(room)
-        // Redirect to the new room
-        router.push(`/room/${room.id}`)
+        setGameState(room.gameState)
+        // Wait a bit before redirecting to ensure state is updated
+        setTimeout(() => {
+          router.push(`/room/${room.id}`)
+        }, 100)
       })
 
       newSocket.on("roomState", (state) => {

@@ -112,9 +112,13 @@ io.on('connection', (socket) => {
         createdAt: new Date()
       };
 
-      await collection.insertOne(room);
+      // First add to in-memory rooms
       rooms.set(roomId, room);
       socket.join(roomId);
+
+      // Then save to database
+      await collection.insertOne(room);
+      
       console.log('Room created successfully:', roomId);
       
       // Emit events to the creator
@@ -129,6 +133,8 @@ io.on('connection', (socket) => {
       });
     } catch (error) {
       console.error('Error creating room:', error);
+      // Clean up in case of error
+      rooms.delete(roomId);
       socket.emit('error', { message: 'Failed to create room' });
     }
   });
@@ -153,6 +159,15 @@ io.on('connection', (socket) => {
           return;
         }
         rooms.set(roomId, room);
+      }
+
+      // Check if player is already in the room
+      if (room.players.some(p => p.id === socket.id)) {
+        console.log('Player already in room:', socket.id);
+        socket.join(roomId);
+        socket.emit('roomState', room);
+        socket.emit('gameState', room.gameState);
+        return;
       }
 
       if (room.players.length >= 2) {
