@@ -107,6 +107,31 @@ function RoomContent() {
           setRoomState(room);
           setGameState(room.gameState);
           setIsLoading(false);
+          
+          toast({
+            title: "Room Created Successfully",
+            description: `Your room code is: ${room.id}`,
+            variant: "default",
+          });
+        });
+
+        newSocket.on("roomCheckResult", (result) => {
+          if (!isMounted) return;
+          console.log('Room check result:', result);
+          
+          if (result.exists) {
+            console.log('Room exists, attempting to join');
+            newSocket.emit("joinRoom", params.roomId);
+          } else {
+            console.log('Room does not exist');
+            setError("Room not found. Please create a new room or check the room code.");
+            toast({
+              title: "Room Not Found",
+              description: "The room you're trying to join doesn't exist. Please create a new room or check the room code.",
+              variant: "destructive",
+            });
+            router.push('/');
+          }
         });
 
         newSocket.on("roomState", (state) => {
@@ -169,7 +194,7 @@ function RoomContent() {
         clearTimeout(timeoutId);
       }
     };
-  }, [params.roomId, toast]);
+  }, [params.roomId, toast, router]);
 
   const handleCellClick = (row: number, col: number) => {
     if (!socket || !gameState || gameState.currentTurn !== socket.id) return
@@ -222,13 +247,32 @@ function RoomContent() {
           <div>
             <h1 className="text-2xl font-bold">Bingo Game</h1>
             {roomState && (
-              <div className="mt-2">
-                <p className="text-lg text-gray-600">
-                  Room Code: <span className="font-mono font-bold">{roomState.id}</span>
-                </p>
-                <p className="text-lg text-gray-600">
-                  Players: {roomState.players.length}/2
-                </p>
+              <div className="mt-4 space-y-2">
+                <div className="flex items-center space-x-2">
+                  <p className="text-lg">
+                    Room Code: <span className="font-mono font-bold text-xl">{roomState.id}</span>
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(roomState.id);
+                      toast({
+                        title: "Copied!",
+                        description: "Room code copied to clipboard",
+                        variant: "default",
+                      });
+                    }}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Users className="h-5 w-5 text-gray-500" />
+                  <p className="text-lg text-gray-600">
+                    Players: {roomState.players.length}/2
+                  </p>
+                </div>
               </div>
             )}
           </div>
@@ -236,7 +280,8 @@ function RoomContent() {
             {roomState?.players.find((p) => p.id === socket?.id)?.isHost && (
               <Button
                 onClick={handleStartGame}
-                disabled={!isConnected || roomState.players.length < 2}
+                disabled={!isConnected || (roomState?.players.length || 0) < 2}
+                className="bg-green-600 hover:bg-green-700"
               >
                 Start Game
               </Button>
@@ -247,43 +292,62 @@ function RoomContent() {
           </div>
         </div>
 
-        {/* Game Board */}
-        {gameState && (
-          <div className="grid grid-cols-5 gap-2">
-            {gameState.grid.map((row, rowIndex) => (
-              row.map((cell, colIndex) => (
-                <div
-                  key={`${rowIndex}-${colIndex}`}
-                  className={cn(
-                    "aspect-square border-2 rounded-lg flex items-center justify-center text-lg font-bold cursor-pointer transition-colors",
-                    gameState.board[rowIndex][colIndex] ? "bg-green-100 border-green-500" : "border-gray-300 hover:border-blue-500",
-                    gameState.currentTurn === socket?.id ? "hover:bg-blue-50" : "cursor-not-allowed opacity-50"
-                  )}
-                  onClick={() => handleCellClick(rowIndex, colIndex)}
-                >
-                  {cell}
-                </div>
-              ))
-            ))}
-          </div>
-        )}
-
         {/* Player List */}
         {roomState && (
-          <div className="mt-8">
-            <h2 className="text-xl font-semibold mb-4">Players</h2>
+          <div className="mt-8 bg-gray-50 rounded-lg p-6">
+            <h2 className="text-xl font-semibold mb-4 flex items-center">
+              <Users className="h-5 w-5 mr-2" />
+              Players
+            </h2>
             <div className="grid grid-cols-2 gap-4">
               {roomState.players.map((player) => (
                 <div
                   key={player.id}
                   className={cn(
-                    "p-4 rounded-lg border",
-                    player.isHost ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200"
+                    "p-4 rounded-lg border-2",
+                    player.isHost 
+                      ? "bg-blue-50 border-blue-200" 
+                      : "bg-white border-gray-200",
+                    player.id === socket?.id && "ring-2 ring-blue-500"
                   )}
                 >
-                  <p className="font-medium">{player.name}</p>
-                  {player.isHost && <span className="text-sm text-blue-600">(Host)</span>}
+                  <div className="flex items-center justify-between">
+                    <p className="font-medium">{player.name}</p>
+                    {player.isHost && (
+                      <span className="text-sm text-blue-600 font-semibold px-2 py-1 bg-blue-100 rounded-full">
+                        Host
+                      </span>
+                    )}
+                  </div>
                 </div>
+              ))}
+              {roomState.players.length === 1 && (
+                <div className="p-4 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center">
+                  <p className="text-gray-500">Waiting for player...</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Game Board */}
+        {gameState && gameState.gameStarted && (
+          <div className="mt-8">
+            <div className="grid grid-cols-5 gap-2">
+              {gameState.grid.map((row, rowIndex) => (
+                row.map((cell, colIndex) => (
+                  <div
+                    key={`${rowIndex}-${colIndex}`}
+                    className={cn(
+                      "aspect-square border-2 rounded-lg flex items-center justify-center text-lg font-bold cursor-pointer transition-colors",
+                      gameState.board[rowIndex][colIndex] ? "bg-green-100 border-green-500" : "border-gray-300 hover:border-blue-500",
+                      gameState.currentTurn === socket?.id ? "hover:bg-blue-50" : "cursor-not-allowed opacity-50"
+                    )}
+                    onClick={() => handleCellClick(rowIndex, colIndex)}
+                  >
+                    {cell}
+                  </div>
+                ))
               ))}
             </div>
           </div>
