@@ -48,7 +48,7 @@ function RoomContent() {
   const { toast } = useToast()
   const [socket, setSocket] = useState<Socket | null>(null)
   const [gameState, setGameState] = useState<GameState | null>(null)
-  const [roomState, setRoomState] = useState<any>(null)
+  const [roomState, setRoomState] = useState<RoomState | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -61,7 +61,6 @@ function RoomContent() {
 
     const initializeSocket = () => {
       try {
-        // Initialize socket connection with better error handling
         const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
         console.log('Connecting to socket server:', socketUrl);
         
@@ -72,13 +71,12 @@ function RoomContent() {
           timeout: 10000,
           transports: ['websocket', 'polling'],
           autoConnect: true,
-          forceNew: true // Force a new connection each time
+          forceNew: true
         });
 
         if (!isMounted) return;
         setSocket(newSocket);
 
-        // Socket event listeners
         newSocket.on("connect", () => {
           if (!isMounted) return;
           console.log("Connected to server successfully");
@@ -87,12 +85,10 @@ function RoomContent() {
           setError(null);
           retryCount = 0;
           
-          // Check if we're creating or joining a room
           const isCreatingRoom = params.roomId === 'new';
           if (isCreatingRoom) {
             const newRoomId = Math.random().toString(36).substring(2, 8).toUpperCase();
             console.log('Creating new room:', newRoomId);
-            // Wait a bit before creating the room to ensure socket is ready
             setTimeout(() => {
               if (isMounted) {
                 console.log('Emitting createRoom event');
@@ -101,27 +97,7 @@ function RoomContent() {
             }, 1000);
           } else {
             console.log('Checking room existence before joining:', params.roomId);
-            // First check if room exists
             newSocket.emit("checkRoom", params.roomId);
-          }
-        });
-
-        newSocket.on("roomCheckResult", (result) => {
-          if (!isMounted) return;
-          console.log('Room check result:', result);
-          
-          if (result.exists) {
-            console.log('Room exists, attempting to join');
-            newSocket.emit("joinRoom", params.roomId);
-          } else {
-            console.log('Room does not exist');
-            setError("Room not found. Please create a new room or check the room code.");
-            toast({
-              title: "Room Not Found",
-              description: "The room you're trying to join doesn't exist. Please create a new room or check the room code.",
-              variant: "destructive",
-            });
-            router.push('/');
           }
         });
 
@@ -130,14 +106,7 @@ function RoomContent() {
           console.log("Room created successfully:", room);
           setRoomState(room);
           setGameState(room.gameState);
-          
-          // Wait longer before redirecting to ensure room is properly set up
-          setTimeout(() => {
-            if (isMounted) {
-              console.log('Redirecting to room:', room.id);
-              router.push(`/room/${room.id}`);
-            }
-          }, 2000);
+          setIsLoading(false);
         });
 
         newSocket.on("roomState", (state) => {
@@ -157,34 +126,12 @@ function RoomContent() {
         newSocket.on("error", (error: { message: string }) => {
           if (!isMounted) return;
           console.error("Socket error:", error);
-          
-          // Handle room not found error with retry
-          if (error.message === 'Room not found' && retryCount < MAX_RETRIES) {
-            retryCount++;
-            console.log(`Retrying room join (attempt ${retryCount}/${MAX_RETRIES})`);
-            setTimeout(() => {
-              if (isMounted && socket) {
-                socket.emit("joinRoom", params.roomId);
-              }
-            }, 1000 * retryCount);
-            return;
-          }
-
           setError(error.message);
           toast({
             title: "Error",
             description: error.message,
             variant: "destructive",
           });
-          
-          // If it's a room creation error, redirect back to home
-          if (error.message === 'Failed to create room') {
-            setTimeout(() => {
-              if (isMounted) {
-                router.push('/');
-              }
-            }, 2000);
-          }
         });
       } catch (error: any) {
         console.error("Error initializing socket:", error);
@@ -201,7 +148,6 @@ function RoomContent() {
 
     initializeSocket();
 
-    // Set a timeout for loading state
     timeoutId = setTimeout(() => {
       if (isMounted && isLoading) {
         setIsLoading(false);
@@ -223,7 +169,7 @@ function RoomContent() {
         clearTimeout(timeoutId);
       }
     };
-  }, [params.roomId, toast, router]);
+  }, [params.roomId, toast]);
 
   const handleCellClick = (row: number, col: number) => {
     if (!socket || !gameState || gameState.currentTurn !== socket.id) return
@@ -236,14 +182,14 @@ function RoomContent() {
   }
 
   const handleStartGame = () => {
-    if (!socket) return
-    socket.emit("startGame", params.roomId)
+    if (!socket) return;
+    socket.emit("startGame", params.roomId);
   }
 
   const handleLeaveRoom = () => {
-    if (!socket) return
-    socket.emit("leaveRoom", params.roomId)
-    router.push("/")
+    if (!socket) return;
+    socket.emit("leaveRoom", params.roomId);
+    router.push("/");
   }
 
   if (error) {
@@ -268,20 +214,6 @@ function RoomContent() {
     )
   }
 
-  if (!gameState) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Waiting for game to start...</h1>
-          <Button onClick={handleStartGame}>Start Game</Button>
-          <Button variant="outline" onClick={handleLeaveRoom} className="ml-2">
-            Leave Room
-          </Button>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-4">
       <div className="w-full max-w-4xl space-y-8">
@@ -290,13 +222,18 @@ function RoomContent() {
           <div>
             <h1 className="text-2xl font-bold">Bingo Game</h1>
             {roomState && (
-              <p className="text-lg text-gray-600">
-                Room Code: <span className="font-mono font-bold">{roomState.id}</span>
-              </p>
+              <div className="mt-2">
+                <p className="text-lg text-gray-600">
+                  Room Code: <span className="font-mono font-bold">{roomState.id}</span>
+                </p>
+                <p className="text-lg text-gray-600">
+                  Players: {roomState.players.length}/2
+                </p>
+              </div>
             )}
           </div>
           <div className="flex gap-4">
-            {roomState?.players.find((p: Player) => p.id === socket?.id)?.isHost && (
+            {roomState?.players.find((p) => p.id === socket?.id)?.isHost && (
               <Button
                 onClick={handleStartGame}
                 disabled={!isConnected || roomState.players.length < 2}
@@ -331,36 +268,12 @@ function RoomContent() {
           </div>
         )}
 
-        {/* Loading State */}
-        {isLoading && (
-          <div className="text-center">
-            <h2 className="text-xl font-semibold mb-4">Loading game...</h2>
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-          </div>
-        )}
-
-        {/* Error State */}
-        {error && (
-          <div className="text-center text-red-500">
-            <h2 className="text-xl font-semibold mb-4">{error}</h2>
-            <Button onClick={() => window.location.reload()}>Refresh Page</Button>
-          </div>
-        )}
-
-        {/* Waiting State */}
-        {!isLoading && !error && !gameState && (
-          <div className="text-center">
-            <h2 className="text-xl font-semibold mb-4">Waiting for game to start...</h2>
-            <p className="text-gray-600">Share the room code with another player to begin</p>
-          </div>
-        )}
-
         {/* Player List */}
         {roomState && (
           <div className="mt-8">
             <h2 className="text-xl font-semibold mb-4">Players</h2>
             <div className="grid grid-cols-2 gap-4">
-              {roomState.players.map((player: Player) => (
+              {roomState.players.map((player) => (
                 <div
                   key={player.id}
                   className={cn(
