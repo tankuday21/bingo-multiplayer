@@ -43,6 +43,8 @@ function RoomContent() {
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
     let isMounted = true;
+    let retryCount = 0;
+    const MAX_RETRIES = 3;
 
     const initializeSocket = () => {
       try {
@@ -66,6 +68,7 @@ function RoomContent() {
           setIsConnected(true);
           setIsLoading(false);
           setError(null);
+          retryCount = 0; // Reset retry count on successful connection
           
           // Check if we're creating or joining a room
           const isCreatingRoom = params.roomId === 'new';
@@ -142,6 +145,19 @@ function RoomContent() {
         newSocket.on("error", (error: { message: string }) => {
           if (!isMounted) return;
           console.error("Socket error:", error);
+          
+          // Handle room not found error with retry
+          if (error.message === 'Room not found' && retryCount < MAX_RETRIES) {
+            retryCount++;
+            console.log(`Retrying room join (attempt ${retryCount}/${MAX_RETRIES})`);
+            setTimeout(() => {
+              if (isMounted && socket) {
+                socket.emit("joinRoom", params.roomId);
+              }
+            }, 1000 * retryCount); // Exponential backoff
+            return;
+          }
+
           setError(error.message);
           toast({
             title: "Error",

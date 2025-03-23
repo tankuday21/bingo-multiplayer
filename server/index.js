@@ -192,7 +192,7 @@ io.on('connection', (socket) => {
     try {
       console.log('Joining room:', roomId);
       if (!db) {
-        throw new Error('Database connection not available');
+        db = await connectToMongoDB();
       }
       const collection = db.collection('rooms');
       
