@@ -90,7 +90,7 @@ function RoomContent() {
           // Check if we're creating or joining a room
           const isCreatingRoom = params.roomId === 'new';
           if (isCreatingRoom) {
-            const newRoomId = Math.random().toString(36).substring(2, 8);
+            const newRoomId = Math.random().toString(36).substring(2, 8).toUpperCase();
             console.log('Creating new room:', newRoomId);
             // Wait a bit before creating the room to ensure socket is ready
             setTimeout(() => {
@@ -103,54 +103,25 @@ function RoomContent() {
             console.log('Checking room existence before joining:', params.roomId);
             // First check if room exists
             newSocket.emit("checkRoom", params.roomId);
-            
-            // Set up listener for room check result
-            newSocket.once("roomCheckResult", (result) => {
-              if (!isMounted) return;
-              console.log('Room check result:', result);
-              
-              if (result.exists) {
-                console.log('Room exists, attempting to join');
-                newSocket.emit("joinRoom", params.roomId);
-              } else {
-                console.log('Room does not exist');
-                setError("Room not found. Please create a new room or check the room code.");
-                toast({
-                  title: "Room Not Found",
-                  description: "The room you're trying to join doesn't exist. Please create a new room or check the room code.",
-                  variant: "destructive",
-                });
-                router.push('/');
-              }
-            });
           }
         });
 
-        newSocket.on("connect_error", (error) => {
+        newSocket.on("roomCheckResult", (result) => {
           if (!isMounted) return;
-          console.error("Connection error:", error);
-          setIsConnected(false);
-          setIsLoading(false);
-          setError(`Failed to connect to the game server: ${error.message}`);
-          toast({
-            title: "Connection Error",
-            description: `Failed to connect to the game server: ${error.message}`,
-            variant: "destructive",
-          });
-        });
-
-        newSocket.on("disconnect", (reason) => {
-          if (!isMounted) return;
-          console.log("Disconnected from server:", reason);
-          setIsConnected(false);
-          setIsLoading(false);
-          if (reason === "io server disconnect") {
-            setError("You have been disconnected from the server. Please refresh the page.");
+          console.log('Room check result:', result);
+          
+          if (result.exists) {
+            console.log('Room exists, attempting to join');
+            newSocket.emit("joinRoom", params.roomId);
+          } else {
+            console.log('Room does not exist');
+            setError("Room not found. Please create a new room or check the room code.");
             toast({
-              title: "Disconnected",
-              description: "You have been disconnected from the server. Please refresh the page.",
+              title: "Room Not Found",
+              description: "The room you're trying to join doesn't exist. Please create a new room or check the room code.",
               variant: "destructive",
             });
+            router.push('/');
           }
         });
 
