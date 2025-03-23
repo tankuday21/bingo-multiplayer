@@ -16,11 +16,25 @@ const io = new Server(httpServer, {
       ? process.env.NEXT_PUBLIC_APP_URL 
       : 'http://localhost:3000',
     methods: ['GET', 'POST']
-  }
+  },
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  connectTimeout: 10000,
+  transports: ['websocket', 'polling']
 });
 
 // Middleware
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      connectSrc: ["'self'", "wss:", "ws:", "http:", "https:"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+}));
 app.use(cors());
 app.use(compression());
 app.use(express.json());
@@ -35,16 +49,33 @@ app.use(limiter);
 // MongoDB connection
 const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
 let db = null;
+let mongoClient = null;
 
 async function connectToMongoDB() {
   try {
-    const client = await MongoClient.connect(uri, {
+    if (mongoClient) {
+      return mongoClient.db('bingo');
+    }
+
+    mongoClient = await MongoClient.connect(uri, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
+      maxPoolSize: 10,
+      minPoolSize: 5
     });
-    db = client.db('bingo');
+
+    mongoClient.on('error', (error) => {
+      console.error('MongoDB connection error:', error);
+    });
+
+    mongoClient.on('close', () => {
+      console.log('MongoDB connection closed');
+      mongoClient = null;
+    });
+
+    db = mongoClient.db('bingo');
     console.log('Connected to MongoDB');
     return db;
   } catch (error) {
@@ -58,6 +89,19 @@ connectToMongoDB().catch(console.error);
 
 // Game state
 const rooms = new Map();
+
+// Clean up rooms periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [roomId, room] of rooms.entries()) {
+    if (now - room.createdAt > 24 * 60 * 60 * 1000) { // 24 hours
+      rooms.delete(roomId);
+      if (db) {
+        db.collection('rooms').deleteOne({ id: roomId }).catch(console.error);
+      }
+    }
+  }
+}, 60 * 60 * 1000); // Run every hour
 
 // Helper function to generate a random grid
 function generateGrid() {
@@ -78,11 +122,16 @@ function generateGrid() {
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
+  // Set up ping/pong for connection health check
+  socket.on('ping', () => {
+    socket.emit('pong');
+  });
+
   socket.on('createRoom', async (roomId) => {
     try {
       console.log('Creating room:', roomId);
       if (!db) {
-        throw new Error('Database connection not available');
+        db = await connectToMongoDB();
       }
       const collection = db.collection('rooms');
       
