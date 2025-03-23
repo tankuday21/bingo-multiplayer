@@ -190,23 +190,27 @@ io.on('connection', (socket) => {
 
   socket.on('joinRoom', async (roomId) => {
     try {
-      console.log('Joining room:', roomId);
+      console.log('Attempting to join room:', roomId);
       if (!db) {
+        console.log('Database not connected, attempting to connect...');
         db = await connectToMongoDB();
       }
       const collection = db.collection('rooms');
       
       // First check in-memory rooms
       let room = rooms.get(roomId);
+      console.log('In-memory room check:', room ? 'Found' : 'Not found');
       
       // If not in memory, check database
       if (!room) {
+        console.log('Checking database for room:', roomId);
         room = await collection.findOne({ id: roomId });
         if (!room) {
-          console.log('Room not found:', roomId);
+          console.log('Room not found in database:', roomId);
           socket.emit('error', { message: 'Room not found' });
           return;
         }
+        console.log('Found room in database, adding to memory');
         rooms.set(roomId, room);
       }
 
@@ -232,13 +236,16 @@ io.on('connection', (socket) => {
         isHost: false
       };
 
+      console.log('Adding new player to room:', newPlayer);
       room.players.push(newPlayer);
+
+      // Update both memory and database
+      rooms.set(roomId, room);
       await collection.updateOne(
         { id: roomId },
         { $set: { players: room.players } }
       );
       
-      rooms.set(roomId, room);
       socket.join(roomId);
       console.log('Player joined successfully:', {
         roomId,
@@ -251,10 +258,10 @@ io.on('connection', (socket) => {
       
       // Then emit game state
       if (room.gameState) {
-        console.log('Emitting game state:', room.gameState);
+        console.log('Emitting existing game state');
         socket.emit('gameState', room.gameState);
       } else {
-        console.log('No game state available, creating new one');
+        console.log('No game state found, creating new one');
         const newGameState = {
           grid: generateGrid(),
           currentTurn: null,
@@ -408,6 +415,34 @@ io.on('connection', (socket) => {
           io.to(roomId).emit('playerLeft', { roomId, players: room.players });
         }
       }
+    }
+  });
+
+  // Add a new event to check room existence
+  socket.on('checkRoom', async (roomId) => {
+    try {
+      console.log('Checking room existence:', roomId);
+      if (!db) {
+        db = await connectToMongoDB();
+      }
+      const collection = db.collection('rooms');
+      
+      // Check both memory and database
+      const inMemoryRoom = rooms.get(roomId);
+      const dbRoom = await collection.findOne({ id: roomId });
+      
+      console.log('Room check results:', {
+        inMemory: inMemoryRoom ? 'Found' : 'Not found',
+        inDatabase: dbRoom ? 'Found' : 'Not found'
+      });
+      
+      socket.emit('roomCheckResult', {
+        exists: !!(inMemoryRoom || dbRoom),
+        roomId
+      });
+    } catch (error) {
+      console.error('Error checking room:', error);
+      socket.emit('error', { message: 'Failed to check room' });
     }
   });
 });

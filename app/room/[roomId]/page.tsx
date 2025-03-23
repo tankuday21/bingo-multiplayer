@@ -98,10 +98,31 @@ function RoomContent() {
                 console.log('Emitting createRoom event');
                 newSocket.emit("createRoom", newRoomId);
               }
-            }, 500); // Increased delay to ensure socket is ready
+            }, 500);
           } else {
-            console.log('Joining existing room:', params.roomId);
-            newSocket.emit("joinRoom", params.roomId);
+            console.log('Checking room existence before joining:', params.roomId);
+            // First check if room exists
+            newSocket.emit("checkRoom", params.roomId);
+            
+            // Set up listener for room check result
+            newSocket.once("roomCheckResult", (result) => {
+              if (!isMounted) return;
+              console.log('Room check result:', result);
+              
+              if (result.exists) {
+                console.log('Room exists, attempting to join');
+                newSocket.emit("joinRoom", params.roomId);
+              } else {
+                console.log('Room does not exist');
+                setError("Room not found. Please create a new room or check the room code.");
+                toast({
+                  title: "Room Not Found",
+                  description: "The room you're trying to join doesn't exist. Please create a new room or check the room code.",
+                  variant: "destructive",
+                });
+                router.push('/');
+              }
+            });
           }
         });
 
