@@ -29,6 +29,19 @@ interface GameState {
   gameStarted: boolean
 }
 
+interface Player {
+  id: string;
+  name: string;
+  isHost: boolean;
+}
+
+interface RoomState {
+  id: string;
+  players: Player[];
+  gameState: GameState;
+  createdAt: Date;
+}
+
 function RoomContent() {
   const params = useParams()
   const router = useRouter()
@@ -262,48 +275,97 @@ function RoomContent() {
   }
 
   return (
-    <div className="container mx-auto p-4">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold">Bingo Game</h1>
-        <Button variant="outline" onClick={handleLeaveRoom}>
-          Leave Room
-        </Button>
-      </div>
+    <div className="flex min-h-screen flex-col items-center justify-center p-4">
+      <div className="w-full max-w-4xl space-y-8">
+        {/* Room Info */}
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold">Bingo Game</h1>
+            {roomState && (
+              <p className="text-lg text-gray-600">
+                Room Code: <span className="font-mono font-bold">{roomState.id}</span>
+              </p>
+            )}
+          </div>
+          <div className="flex gap-4">
+            {roomState?.players.find((p: Player) => p.id === socket?.id)?.isHost && (
+              <Button
+                onClick={handleStartGame}
+                disabled={!isConnected || roomState.players.length < 2}
+              >
+                Start Game
+              </Button>
+            )}
+            <Button variant="outline" onClick={handleLeaveRoom}>
+              Leave Room
+            </Button>
+          </div>
+        </div>
 
-      <div className="grid grid-cols-5 gap-2 mb-4">
-        {gameState.grid.map((row, rowIndex) =>
-          row.map((cell, colIndex) => (
-            <button
-              key={`${rowIndex}-${colIndex}`}
-              className={`aspect-square border rounded-lg text-xl font-bold ${
-                gameState.board[rowIndex][colIndex]
-                  ? "bg-green-500 text-white"
-                  : "bg-white dark:bg-gray-800"
-              } ${
-                gameState.currentTurn === socket?.id
-                  ? "hover:bg-green-100 dark:hover:bg-green-900"
-                  : ""
-              }`}
-              onClick={() => handleCellClick(rowIndex, colIndex)}
-              disabled={gameState.currentTurn !== socket?.id || gameState.isGameOver}
-            >
-              {cell}
-            </button>
-          ))
+        {/* Game Board */}
+        {gameState && (
+          <div className="grid grid-cols-5 gap-2">
+            {gameState.grid.map((row, rowIndex) => (
+              row.map((cell, colIndex) => (
+                <div
+                  key={`${rowIndex}-${colIndex}`}
+                  className={cn(
+                    "aspect-square border-2 rounded-lg flex items-center justify-center text-lg font-bold cursor-pointer transition-colors",
+                    gameState.board[rowIndex][colIndex] ? "bg-green-100 border-green-500" : "border-gray-300 hover:border-blue-500",
+                    gameState.currentTurn === socket?.id ? "hover:bg-blue-50" : "cursor-not-allowed opacity-50"
+                  )}
+                  onClick={() => handleCellClick(rowIndex, colIndex)}
+                >
+                  {cell}
+                </div>
+              ))
+            ))}
+          </div>
         )}
-      </div>
 
-      <div className="text-center">
-        {gameState.isGameOver ? (
-          <h2 className="text-xl font-bold">
-            {gameState.winner === socket?.id ? "You won!" : "Game Over!"}
-          </h2>
-        ) : (
-          <h2 className="text-xl font-bold">
-            {gameState.currentTurn === socket?.id
-              ? "Your turn!"
-              : "Waiting for opponent..."}
-          </h2>
+        {/* Loading State */}
+        {isLoading && (
+          <div className="text-center">
+            <h2 className="text-xl font-semibold mb-4">Loading game...</h2>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && (
+          <div className="text-center text-red-500">
+            <h2 className="text-xl font-semibold mb-4">{error}</h2>
+            <Button onClick={() => window.location.reload()}>Refresh Page</Button>
+          </div>
+        )}
+
+        {/* Waiting State */}
+        {!isLoading && !error && !gameState && (
+          <div className="text-center">
+            <h2 className="text-xl font-semibold mb-4">Waiting for game to start...</h2>
+            <p className="text-gray-600">Share the room code with another player to begin</p>
+          </div>
+        )}
+
+        {/* Player List */}
+        {roomState && (
+          <div className="mt-8">
+            <h2 className="text-xl font-semibold mb-4">Players</h2>
+            <div className="grid grid-cols-2 gap-4">
+              {roomState.players.map((player: Player) => (
+                <div
+                  key={player.id}
+                  className={cn(
+                    "p-4 rounded-lg border",
+                    player.isHost ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200"
+                  )}
+                >
+                  <p className="font-medium">{player.name}</p>
+                  {player.isHost && <span className="text-sm text-blue-600">(Host)</span>}
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </div>
