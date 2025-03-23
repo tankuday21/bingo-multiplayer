@@ -86,6 +86,14 @@ io.on('connection', (socket) => {
       }
       const collection = db.collection('rooms');
       
+      // Check if room already exists
+      const existingRoom = await collection.findOne({ id: roomId });
+      if (existingRoom) {
+        console.log('Room already exists:', roomId);
+        socket.emit('error', { message: 'Room already exists' });
+        return;
+      }
+
       const room = {
         id: roomId,
         players: [{
@@ -107,9 +115,18 @@ io.on('connection', (socket) => {
       await collection.insertOne(room);
       rooms.set(roomId, room);
       socket.join(roomId);
-      console.log('Room created, emitting roomCreated event');
+      console.log('Room created successfully:', roomId);
+      
+      // Emit events to the creator
       socket.emit('roomCreated', room);
       socket.emit('gameState', room.gameState);
+      
+      // Log the room state for debugging
+      console.log('Room state after creation:', {
+        roomId,
+        players: room.players,
+        gameState: room.gameState
+      });
     } catch (error) {
       console.error('Error creating room:', error);
       socket.emit('error', { message: 'Failed to create room' });
@@ -124,11 +141,18 @@ io.on('connection', (socket) => {
       }
       const collection = db.collection('rooms');
       
-      const room = await collection.findOne({ id: roomId });
+      // First check in-memory rooms
+      let room = rooms.get(roomId);
+      
+      // If not in memory, check database
       if (!room) {
-        console.log('Room not found:', roomId);
-        socket.emit('error', { message: 'Room not found' });
-        return;
+        room = await collection.findOne({ id: roomId });
+        if (!room) {
+          console.log('Room not found:', roomId);
+          socket.emit('error', { message: 'Room not found' });
+          return;
+        }
+        rooms.set(roomId, room);
       }
 
       if (room.players.length >= 2) {
@@ -152,7 +176,11 @@ io.on('connection', (socket) => {
       
       rooms.set(roomId, room);
       socket.join(roomId);
-      console.log('Player joined, emitting events');
+      console.log('Player joined successfully:', {
+        roomId,
+        playerId: socket.id,
+        playerNumber
+      });
       
       // Emit room state first
       socket.emit('roomState', room);

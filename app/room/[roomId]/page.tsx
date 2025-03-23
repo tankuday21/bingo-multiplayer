@@ -60,7 +60,17 @@ function RoomContent() {
         setIsConnected(true)
         setIsLoading(false)
         setError(null)
-        newSocket.emit("joinRoom", { roomId: params.roomId })
+        
+        // Check if we're creating or joining a room
+        const isCreatingRoom = params.roomId === 'new'
+        if (isCreatingRoom) {
+          const newRoomId = Math.random().toString(36).substring(2, 8)
+          console.log('Creating new room:', newRoomId)
+          newSocket.emit("createRoom", newRoomId)
+        } else {
+          console.log('Joining existing room:', params.roomId)
+          newSocket.emit("joinRoom", params.roomId)
+        }
       })
 
       newSocket.on("connect_error", (error) => {
@@ -87,6 +97,13 @@ function RoomContent() {
             variant: "destructive",
           })
         }
+      })
+
+      newSocket.on("roomCreated", (room) => {
+        console.log("Room created:", room)
+        setRoomState(room)
+        // Redirect to the new room
+        router.push(`/room/${room.id}`)
       })
 
       newSocket.on("roomState", (state) => {
@@ -135,7 +152,7 @@ function RoomContent() {
         clearTimeout(timeoutId)
       }
     }
-  }, [params.roomId, toast])
+  }, [params.roomId, toast, router])
 
   const handleCellClick = (row: number, col: number) => {
     if (!socket || !gameState || gameState.currentTurn !== socket.id) return
