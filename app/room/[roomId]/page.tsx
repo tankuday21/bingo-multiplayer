@@ -98,7 +98,7 @@ function RoomContent() {
                 console.log('Emitting createRoom event');
                 newSocket.emit("createRoom", newRoomId);
               }
-            }, 1000); // Increased delay to ensure socket is ready
+            }, 1000);
           } else {
             console.log('Checking room existence before joining:', params.roomId);
             // First check if room exists
@@ -166,7 +166,7 @@ function RoomContent() {
               console.log('Redirecting to room:', room.id);
               router.push(`/room/${room.id}`);
             }
-          }, 2000); // Increased delay to 2 seconds
+          }, 2000);
         });
 
         newSocket.on("roomState", (state) => {
