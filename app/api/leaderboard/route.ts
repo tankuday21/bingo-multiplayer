@@ -16,6 +16,10 @@ export async function GET() {
     return NextResponse.json(leaderboard)
   } catch (error) {
     console.error('Error fetching leaderboard:', error)
+    // Return empty leaderboard instead of error in production
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json([])
+    }
     return NextResponse.json({ error: 'Failed to fetch leaderboard' }, { status: 500 })
   }
 }
